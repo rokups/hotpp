@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <chrono>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
@@ -313,14 +314,22 @@ LoadResult open_core_copy_once(const std::string& path)
         static std::once_flag swept;
         std::call_once(swept, [&] { sweep_core_folder(dir); });
     }
-    std::random_device rd;
+    unsigned random = static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count());
+    try
+    {
+        random ^= std::random_device{}(); // It can throw when the system has no entropy source.
+    }
+    catch (const std::exception&)
+    {
+    }
     char suffix[16];
-    std::snprintf(suffix, sizeof suffix, "%08x-", static_cast<unsigned>(rd()));
+    std::snprintf(suffix, sizeof suffix, "%08x-", random);
     const fs::path copy = dir / (suffix + fs::path(path).filename().string());
     if (!copy_new_file(path, copy, r.error))
     {
         r.error = "cannot copy " + path + " for the core module: " + r.error;
-        remove_owned_copy(copy.string());
+        if (!shared) // copy_new_file removes its own partial file. Never remove a file it did not create.
+            fs::remove(dir, ec);
         return r;
     }
     return open_library(copy.string(), path + " (core)", true);
