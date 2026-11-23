@@ -52,7 +52,8 @@ public:
     }
 
 private:
-    static const char* key() { return typeid(T).name(); }
+    // A pointer type is always complete, so T can be an opaque class.
+    static const char* key() { return typeid(T*).name(); }
 };
 
 // The base of weak_ref_traits<T> for a class that the host tracks with weak_registry<T>.
