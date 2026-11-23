@@ -1865,7 +1865,7 @@ void Server::read_compile_commands()
 // A CMake reconfigure changes the source, so refresh_cdb_copy writes the copy again.
 bool Server::write_cdb_copy(const fs::path& target, const fs::path& copy)
 {
-    const auto text = read_file(target.string());
+    const auto text = read_file(path_utf8(target));
     json db = text ? json::parse(*text, nullptr, false) : json();
     if (!db.is_array())
         return false;
@@ -1929,7 +1929,7 @@ std::string Server::private_cdb_dir()
     if (ec)
         return opt_.compile_commands_dir;
     const fs::path link = dir / "compile_commands.json";
-    const fs::path target = fs::absolute(fs::path(opt_.compile_commands_dir) / "compile_commands.json", ec);
+    const fs::path target = fs::absolute(utf8_path(opt_.compile_commands_dir) / "compile_commands.json", ec);
     if (ec || !fs::exists(target))
         return opt_.compile_commands_dir;
     fs::remove(link, ec);
@@ -1940,10 +1940,10 @@ std::string Server::private_cdb_dir()
     cdb_target_ = target;
     cdb_copy_ = link;
     cdb_time_ = t;
-    return dir.string();
+    return path_utf8(dir);
 #else
     fs::create_symlink(target, link, ec);
-    return ec ? opt_.compile_commands_dir : dir.string();
+    return ec ? opt_.compile_commands_dir : path_utf8(dir);
 #endif
 }
 
