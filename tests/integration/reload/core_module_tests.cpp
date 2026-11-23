@@ -40,6 +40,13 @@
     #include <unistd.h>
 #endif
 
+// Internal helpers of module.cpp (not public API).
+namespace hot
+{
+std::filesystem::path core_app_folder(const std::filesystem::path& temp);
+void sweep_core_folder(const std::filesystem::path& folder);
+} // namespace hot
+
 namespace
 {
 
@@ -357,7 +364,52 @@ struct PrivateTmp
 };
 #endif
 
-// The loader unlinks the private core copy right after the load: a crash leaves no file behind.
+#ifndef _WIN32
+size_t folder_files(const std::filesystem::path& dir)
+{
+    size_t n = 0;
+    for (const auto& e : std::filesystem::directory_iterator(dir))
+        ++n;
+    return n;
+}
+
+// The paths in /proc/self/maps that hold the needle.
+std::set<std::string> mapped_paths(const std::string& needle)
+{
+    std::set<std::string> paths;
+    std::ifstream in("/proc/self/maps");
+    for (std::string line; std::getline(in, line);)
+        if (line.find(needle) != std::string::npos)
+            paths.insert(line.substr(line.find('/')));
+    return paths;
+}
+#endif
+
+// The sweep deletes regular files and symlinks. It keeps a subfolder and every symlink target.
+TEST(CoreModule, SweepDeletesFilesOnly)
+{
+#ifdef _WIN32
+    GTEST_SKIP() << "POSIX symlink test";
+#else
+    namespace fs = std::filesystem;
+    const PrivateTmp tmp;
+    const fs::path decoy = fs::temp_directory_path() / "decoy";
+    { std::ofstream(decoy) << "decoy"; }
+    const fs::path dir = hot::core_app_folder(fs::temp_directory_path());
+    fs::create_directories(dir / "sub");
+    { std::ofstream(dir / "sub" / "inner") << "x"; }
+    { std::ofstream(dir / "a.so") << "x"; }
+    fs::create_symlink(decoy, dir / "link.so");
+    hot::sweep_core_folder(dir);
+    EXPECT_FALSE(fs::exists(dir / "a.so"));
+    EXPECT_FALSE(fs::is_symlink(dir / "link.so"));
+    EXPECT_TRUE(fs::exists(dir / "sub" / "inner"));
+    EXPECT_TRUE(fs::exists(decoy));
+    EXPECT_TRUE(fs::exists(dir));
+#endif
+}
+
+// The loader unlinks the copy right after dlopen: the per-app folder holds no file.
 TEST(CoreModule, CopyIsUnlinkedAfterLoad)
 {
 #ifdef _WIN32
@@ -365,23 +417,34 @@ TEST(CoreModule, CopyIsUnlinkedAfterLoad)
 #else
     namespace fs = std::filesystem;
     const PrivateTmp tmp;
-    auto count = [] {
-        size_t n = 0;
-        for (const auto& e : fs::directory_iterator(fs::temp_directory_path()))
-            n += e.path().filename().string().rfind("hot-core-", 0) == 0;
-        return n;
-    };
     hot::LoadResult r = hot::module_from_library(STRESS_SO);
     ASSERT_TRUE(r) << r.error;
-    const size_t before = count();
     hot::LoadResult core = r.module->make_core();
     ASSERT_TRUE(core) << core.error;
-    EXPECT_LE(count(), before);
+    EXPECT_EQ(folder_files(hot::core_app_folder(fs::temp_directory_path())), 0u);
     EXPECT_NE(core.module->register_fn, nullptr);
 #endif
 }
 
-// The core copy must not follow a symlink that another user planted at the old predictable name.
+// Two cores in a row use two different file names.
+TEST(CoreModule, CopyNamesDiffer)
+{
+#ifdef _WIN32
+    GTEST_SKIP() << "POSIX test: it reads /proc/self/maps";
+#else
+    const PrivateTmp tmp;
+    hot::LoadResult r = hot::module_from_library(STRESS_SO);
+    ASSERT_TRUE(r) << r.error;
+    hot::LoadResult c1 = r.module->make_core();
+    hot::LoadResult c2 = r.module->make_core();
+    ASSERT_TRUE(c1) << c1.error;
+    ASSERT_TRUE(c2) << c2.error;
+    const std::string folder = hot::core_app_folder(std::filesystem::temp_directory_path()).string();
+    EXPECT_EQ(mapped_paths(folder).size(), 2u);
+#endif
+}
+
+// A planted symlink in the per-app folder stays harmless: the core loads and the target stays.
 TEST(CoreModule, CopyDoesNotFollowPlantedSymlink)
 {
 #ifdef _WIN32
@@ -389,33 +452,17 @@ TEST(CoreModule, CopyDoesNotFollowPlantedSymlink)
 #else
     namespace fs = std::filesystem;
     const PrivateTmp tmp;
-    const fs::path decoy = fs::temp_directory_path() / ("hot-decoy-" + std::to_string(getpid()));
+    const fs::path decoy = fs::temp_directory_path() / "decoy";
     { std::ofstream(decoy) << "decoy"; }
-    std::vector<fs::path> links;
+    const fs::path dir = hot::core_app_folder(fs::temp_directory_path());
+    fs::create_directories(dir);
+    fs::permissions(dir, fs::perms::owner_all);
     for (int n = 0; n < 64; ++n)
-    {
-        links.push_back(fs::temp_directory_path()
-            / ("hot-core-" + std::to_string(getpid()) + "-" + std::to_string(n) + "-"
-                + fs::path(STRESS_SO).filename().string()));
-        std::error_code ec;
-        fs::remove(links.back(), ec);
-        fs::create_symlink(decoy, links.back());
-    }
+        fs::create_symlink(decoy, dir / ("planted" + std::to_string(n) + ".so"));
     hot::LoadResult r = hot::module_from_library(STRESS_SO);
     ASSERT_TRUE(r) << r.error;
-    // The loader unlinks the copy right after dlopen: no private directory stays in the temp directory.
-    auto core_entries = [] {
-        std::set<fs::path> names;
-        for (const auto& e : fs::directory_iterator(fs::temp_directory_path()))
-            if (e.path().filename().string().rfind("hot-core-", 0) == 0)
-                names.insert(e.path());
-        return names;
-    };
-    const std::set<fs::path> before = core_entries();
     hot::LoadResult core = r.module->make_core();
     EXPECT_TRUE(core) << core.error;
-    for (const fs::path& e : core_entries())
-        EXPECT_TRUE(before.count(e)) << "new entry " << e;
     EXPECT_NE(core.module->register_fn, nullptr);
     core = {};
     r = {};
@@ -423,10 +470,42 @@ TEST(CoreModule, CopyDoesNotFollowPlantedSymlink)
     std::string text;
     std::getline(in, text);
     EXPECT_EQ(text, "decoy");
-    std::error_code ec;
-    for (const fs::path& l : links)
-        fs::remove(l, ec);
-    fs::remove(decoy, ec);
+#endif
+}
+
+// A shared folder with a wrong mode, or a symlink as the folder: the code uses a private directory.
+// The sweep runs once for each process, so the test checks only the fallback and the load.
+TEST(CoreModule, UnsafeSharedFolderFallsBack)
+{
+#ifdef _WIN32
+    GTEST_SKIP() << "POSIX test";
+#else
+    namespace fs = std::filesystem;
+    const PrivateTmp tmp;
+    const fs::path dir = hot::core_app_folder(fs::temp_directory_path());
+    const fs::path other = fs::temp_directory_path() / "other";
+    fs::create_directories(dir);
+    fs::create_directories(other);
+    fs::permissions(dir, fs::perms::all); // group and others can write
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        hot::LoadResult r = hot::module_from_library(STRESS_SO);
+        ASSERT_TRUE(r) << r.error;
+        hot::LoadResult core = r.module->make_core();
+        ASSERT_TRUE(core) << core.error;
+        EXPECT_NE(core.module->register_fn, nullptr);
+        EXPECT_EQ(folder_files(pass == 0 ? dir : other), 0u);
+        // The private directories are gone: only "dir" or its link and "other" stay in the temp directory.
+        size_t private_dirs = 0;
+        for (const auto& e : fs::directory_iterator(fs::temp_directory_path()))
+            private_dirs += e.path().filename().string().rfind("hot-core~", 0) == 0;
+        EXPECT_EQ(private_dirs, 0u);
+        if (pass == 0)
+        {
+            fs::remove(dir);
+            fs::create_directory_symlink(other, dir);
+        }
+    }
 #endif
 }
 

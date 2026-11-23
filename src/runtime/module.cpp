@@ -13,9 +13,10 @@
     #ifndef NOMINMAX
         #define NOMINMAX
     #endif
-    #include <process.h>
     #include <windows.h>
 #else
+    #include <fcntl.h>
+    #include <sys/stat.h>
     // An AOT-only build (HOT_AOT_ONLY) loads no library, so it has no dlfcn.h.
     #ifndef HOT_AOT_ONLY
         #include <dlfcn.h>
@@ -23,21 +24,70 @@
     #include <unistd.h>
 #endif
 #ifdef __APPLE__
+    #include <mach-o/dyld.h>
     #include "hot/command_line.h"
 #endif
 
 #include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <mutex>
+#include <random>
 #include <system_error>
 #include <thread>
 
 namespace hot
 {
+
+// Internal helpers for the core copy. The tests call them. They are not public API.
+// The folder for the core copies of this application: "<temp>/hot-core-<exe name>".
+std::filesystem::path core_app_folder(const std::filesystem::path& temp)
+{
+    std::string name;
+#if defined(_WIN32)
+    wchar_t buf[MAX_PATH];
+    const DWORD n = GetModuleFileNameW(nullptr, buf, MAX_PATH);
+    if (n > 0 && n < MAX_PATH)
+        name = std::filesystem::path(std::wstring(buf, n)).filename().string();
+#elif defined(__APPLE__)
+    char buf[4096];
+    uint32_t size = sizeof buf;
+    if (_NSGetExecutablePath(buf, &size) == 0)
+        name = std::filesystem::path(buf).filename().string();
+#else
+    char buf[4096];
+    const ssize_t n = readlink("/proc/self/exe", buf, sizeof buf);
+    if (n > 0)
+        name = std::filesystem::path(std::string(buf, static_cast<size_t>(n))).filename().string();
+#endif
+    if (name.empty())
+        name = "app";
+    for (char& c : name)
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '.' && c != '_' && c != '-')
+            c = '_';
+    return temp / ("hot-core-" + name);
+}
+
+// Deletes each regular file (and each symlink, not its target) in the folder. A failure is not an
+// error: a file in use or a file of a concurrent run stays. A subfolder stays.
+void sweep_core_folder(const std::filesystem::path& folder)
+{
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    for (fs::directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec))
+    {
+        std::error_code ec2;
+        const fs::file_status st = it->symlink_status(ec2);
+        if (!ec2 && (fs::is_regular_file(st) || fs::is_symlink(st)))
+            fs::remove(it->path(), ec2);
+    }
+}
 
 namespace
 {
@@ -60,14 +110,15 @@ std::string last_error_text()
 }
 #endif
 
-// Removes a private core copy. On POSIX the copy is alone in a private directory: remove it too.
+// Removes a private core copy. The fallback directory "hot-core~XXXXXX" holds only this copy: remove
+// it too. The name has a "~", so it never equals the shared folder "hot-core-<exe name>".
 void remove_owned_copy(const std::string& path)
 {
     std::error_code ec;
     std::filesystem::remove(path, ec);
-#ifndef _WIN32
-    std::filesystem::remove(std::filesystem::path(path).parent_path(), ec);
-#endif
+    const std::filesystem::path dir = std::filesystem::path(path).parent_path();
+    if (dir.filename().string().rfind("hot-core~", 0) == 0)
+        std::filesystem::remove(dir, ec);
 }
 
 // Opens the library at "path". When "owned_copy" is true, the keep-alive object also removes
@@ -158,42 +209,133 @@ LoadResult open_library(const std::string& path, const std::string& origin, bool
 }
 #endif
 
+// Copies "src" to the new file "dst". The creation is exclusive and does not follow a symlink.
+bool copy_new_file(const std::filesystem::path& src, const std::filesystem::path& dst, std::string& err)
+{
+    std::ifstream in(src, std::ios::binary);
+    if (!in)
+    {
+        err = "cannot read " + src.string();
+        return false;
+    }
+#ifdef _WIN32
+    HANDLE h = CreateFileW(dst.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE)
+    {
+        err = "cannot create " + dst.string() + ": " + last_error_text();
+        return false;
+    }
+#else
+    const int fd = open(dst.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0700);
+    if (fd < 0)
+    {
+        err = "cannot create " + dst.string() + ": " + std::strerror(errno);
+        return false;
+    }
+#endif
+    char buf[65536];
+    bool ok = true;
+    while (ok && (in.read(buf, sizeof buf), in.gcount() > 0))
+    {
+        const char* p = buf;
+        size_t n = static_cast<size_t>(in.gcount());
+        while (ok && n > 0)
+        {
+#ifdef _WIN32
+            DWORD w = 0;
+            ok = WriteFile(h, p, static_cast<DWORD>(n), &w, nullptr) && w > 0;
+#else
+            const ssize_t w = write(fd, p, n);
+            ok = w > 0;
+#endif
+            if (ok)
+            {
+                p += w;
+                n -= static_cast<size_t>(w);
+            }
+        }
+    }
+    ok = ok && in.eof();
+#ifdef _WIN32
+    CloseHandle(h);
+#else
+    close(fd);
+#endif
+    if (!ok)
+    {
+        std::error_code ec;
+        std::filesystem::remove(dst, ec);
+        err = "cannot write " + dst.string();
+    }
+    return ok;
+}
+
+#ifndef _WIN32
+// The shared folder is safe when it is a real directory of this user that no other user can write.
+bool shared_folder_ok(const std::filesystem::path& dir)
+{
+    if (mkdir(dir.c_str(), 0700) != 0 && errno != EEXIST)
+        return false;
+    struct stat st;
+    return lstat(dir.c_str(), &st) == 0 && S_ISDIR(st.st_mode) && st.st_uid == geteuid()
+        && (st.st_mode & (S_IWGRP | S_IWOTH)) == 0;
+}
+#endif
+
+LoadResult open_core_copy_once(const std::string& path)
+{
+    namespace fs = std::filesystem;
+    LoadResult r;
+    std::error_code ec;
+    fs::path temp = fs::temp_directory_path(ec);
+    if (ec)
+        temp = fs::path(path).parent_path();
+    fs::path dir = core_app_folder(temp);
+    bool shared = true;
+#ifdef _WIN32
+    fs::create_directories(dir, ec); // The temp directory of a Windows user is private.
+#else
+    if (!shared_folder_ok(dir))
+    {
+        // Another user can own the shared folder: use a private directory (mode 0700) for this copy.
+        std::string tmpl = (temp / "hot-core~XXXXXX").string();
+        if (!mkdtemp(tmpl.data()))
+        {
+            r.error = "cannot create a directory for the core module: " + std::string(std::strerror(errno));
+            return r;
+        }
+        dir = tmpl;
+        shared = false;
+    }
+#endif
+    if (shared)
+    {
+        static std::once_flag swept;
+        std::call_once(swept, [&] { sweep_core_folder(dir); });
+    }
+    std::random_device rd;
+    char suffix[16];
+    std::snprintf(suffix, sizeof suffix, "%08x-", static_cast<unsigned>(rd()));
+    const fs::path copy = dir / (suffix + fs::path(path).filename().string());
+    if (!copy_new_file(path, copy, r.error))
+    {
+        r.error = "cannot copy " + path + " for the core module: " + r.error;
+        remove_owned_copy(copy.string());
+        return r;
+    }
+    return open_library(copy.string(), path + " (core)", true);
+}
+
 // A core instance of a library (module.h). dlopen gives the same handle for the same file,
 // also through a hard link. So the core instance loads a private copy of the file.
 LoadResult open_core_copy(const std::string& path)
 {
-    static std::atomic<unsigned> sequence{0};
-    namespace fs = std::filesystem;
-    LoadResult r;
-    std::error_code ec;
-    fs::path dir = fs::temp_directory_path(ec);
-    if (ec)
-        dir = fs::path(path).parent_path();
-#ifdef _WIN32
-    const unsigned long pid = static_cast<unsigned long>(_getpid());
-#else
-    const unsigned long pid = static_cast<unsigned long>(getpid());
-#endif
-#ifndef _WIN32
-    // A private directory (mode 0700) keeps another user from planting a symlink at the copy name.
-    std::string tmpl = (dir / "hot-core-XXXXXX").string();
-    if (!mkdtemp(tmpl.data()))
-    {
-        r.error = "cannot create a directory for the core module: " + std::string(std::strerror(errno));
-        return r;
-    }
-    dir = tmpl;
-#endif
-    const fs::path copy = dir
-        / ("hot-core-" + std::to_string(pid) + "-" + std::to_string(sequence.fetch_add(1)) + "-"
-            + fs::path(path).filename().string());
-    if (!fs::copy_file(path, copy, fs::copy_options::overwrite_existing, ec))
-    {
-        remove_owned_copy(copy.string());
-        r.error = "cannot copy " + path + " for the core module: " + ec.message();
-        return r;
-    }
-    return open_library(copy.string(), path + " (core)", true);
+    // A concurrent instance of the same application sweeps the shared folder at its start. It can
+    // delete a copy that this instance made but did not load yet. So try one more time.
+    LoadResult r = open_core_copy_once(path);
+    if (!r)
+        r = open_core_copy_once(path);
+    return r;
 }
 
 } // namespace
