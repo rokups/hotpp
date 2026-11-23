@@ -9,7 +9,9 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
+#include <atomic>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -137,8 +139,8 @@ TEST_F(CrossModule, FieldReadsAndWritesByName)
     EXPECT_EQ(hot::field<int>(&sh, site, "a"), 3);
     hot::field<int>(&sh, site, "a") = 9;
     EXPECT_EQ(block.a, 9);
-    EXPECT_EQ(site.layout, &layout1);
-    EXPECT_EQ(site.offset, offsetof(V1, a));
+    EXPECT_EQ(site.layout.load(), &layout1);
+    EXPECT_EQ(uint32_t(site.packed.load()), offsetof(V1, a));
 }
 
 TEST_F(CrossModule, FieldOffsetResolvesAgainAfterALayoutChange)
@@ -152,14 +154,39 @@ TEST_F(CrossModule, FieldOffsetResolvesAgainAfterALayoutChange)
     hot::FieldSite site;
     EXPECT_EQ(hot::field<int>(&sh, site, "a"), 3);
     // A reload: the record gets the new layout and the object gets the new block.
+    ++hot::link_epoch;
     rec.layout = &layout2;
     sh.state = &new_block;
     EXPECT_EQ(hot::field<int>(&sh, site, "a"), 7);
-    EXPECT_EQ(site.layout, &layout2);
-    EXPECT_EQ(site.offset, offsetof(V2, a));
+    EXPECT_EQ(site.layout.load(), &layout2);
+    EXPECT_EQ(uint32_t(site.packed.load()), offsetof(V2, a));
     // The same layout pointer uses the cached offset: a wrong cached value shows it.
-    site.offset = offsetof(V2, c);
+    site.packed = (site.packed.load() & ~0xffffffffull) | offsetof(V2, c);
     EXPECT_EQ(hot::field<int>(&sh, site, "a"), 8);
+}
+
+TEST_F(CrossModule, OneSiteTwoLayoutsInTwoThreads)
+{
+    V1 b1{3, 1.5f};
+    V2 b2{2.5f, 0, 7, 8};
+    hot::ClassRecord r1 = make_record("B", &layout1);
+    hot::ClassRecord r2 = make_record("B", &layout2);
+    hot::FieldSite site;
+    std::atomic<int> bad{0};
+    auto run = [&](hot::ClassRecord* rec, void* block, int want)
+    {
+        TestShell sh;
+        sh.cls = rec;
+        sh.state = block;
+        for (int i = 0; i < 200000; ++i)
+            if (hot::field<int>(&sh, site, "a") != want)
+                ++bad;
+    };
+    std::thread t1(run, &r1, &b1, 3);
+    std::thread t2(run, &r2, &b2, 7);
+    t1.join();
+    t2.join();
+    EXPECT_EQ(bad.load(), 0);
 }
 
 TEST_F(CrossModule, FieldTypeMismatchThrows)
@@ -171,7 +198,7 @@ TEST_F(CrossModule, FieldTypeMismatchThrows)
     sh.state = &block;
     hot::FieldSite site;
     EXPECT_THROW(hot::field<float>(&sh, site, "a"), hot::ScriptError);
-    EXPECT_EQ(site.layout, nullptr); // a failed resolve does not fill the site
+    EXPECT_EQ(site.layout.load(), nullptr); // a failed resolve does not fill the site
     // A change of the type at a reload: the cached site resolves again and throws.
     EXPECT_EQ(hot::field<float>(&sh, site, "b"), 1.5f);
     rec.layout = &layout2;
@@ -214,11 +241,12 @@ TEST_F(CrossModule, ModVarUsesTheBlockOfTheUnit)
     hot::mod_var<int>(hot::unit_ref("X"), site, "a") = 5;
     EXPECT_EQ(block1.a, 5);
     // A reload: a new layout and a new block.
+    ++hot::link_epoch;
     V2 block2{1.0f, 0, 6, 0};
     g_unit.layout = &layout2;
     g_unit.block = &block2;
     EXPECT_EQ(hot::mod_var<int>(hot::unit_ref("X"), site, "a"), 6);
-    EXPECT_EQ(site.offset, offsetof(V2, a));
+    EXPECT_EQ(uint32_t(site.packed.load()), offsetof(V2, a));
     hot::FieldSite wrong_type, missing;
     EXPECT_THROW(hot::mod_var<double>(hot::unit_ref("X"), wrong_type, "b"), hot::ScriptError);
     EXPECT_THROW(hot::mod_var<int>(hot::unit_ref("X"), missing, "missing"), hot::ScriptError);

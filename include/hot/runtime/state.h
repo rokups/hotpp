@@ -5,6 +5,7 @@
 // The state block of a script object, the reflection helpers and the field access.
 #pragma once
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -523,15 +524,15 @@ template <class T> inline T* field_ptr(ShellCore* s, const char* name)
     return reinterpret_cast<T*>(static_cast<char*>(sb->state) + f->offset);
 }
 
-// The cache of one access site of a field of another unit (field, mod_var). "layout" is the layout
-// that "offset" belongs to. The site is a static variable of the generated code. It follows the
-// thread rule of script code: only one script thread at a time runs a site (threads.h). "epoch" is
-// the link epoch of the last resolve (threads.h).
+// The cache of one access site of a field of another unit (field, mod_var). The site is a static
+// variable of the generated code. Worker threads share it. The first layout that fills the site
+// owns it in one link epoch. "packed" holds the offset (low 32 bit) and the link epoch plus one (high
+// 32 bit) of the owner. Other layouts resolve each time and do not write the site. At a reload
+// barrier no worker runs script code, so a new layout takes a site with a stale epoch.
 struct FieldSite
 {
-    const StateLayout* layout = nullptr;
-    uint32_t offset = 0;
-    uint32_t epoch = 0;
+    std::atomic<const StateLayout*> layout{nullptr};
+    std::atomic<uint64_t> packed{0};
 };
 
 namespace detail
@@ -541,6 +542,31 @@ namespace detail
 // unit for the text of the error.
 HOT_NODEBUG HOT_EXPORT uint32_t resolve_field_offset(
     const StateLayout* layout, const char* name, const char* type, const char* owner);
+
+// The offset for "layout" through the site. "resolve" finds the offset by name and may throw.
+template <class F> HOT_HIDDEN uint32_t site_offset(FieldSite& site, const StateLayout* layout, F&& resolve)
+{
+    constexpr uint64_t offset_mask = 0xffffffffull;
+    const uint64_t tag = (uint64_t(link_epoch) + 1) << 32;
+    if (layout && site.layout.load(std::memory_order_acquire) == layout)
+    {
+        const uint64_t p = site.packed.load(std::memory_order_acquire);
+        if ((p & ~offset_mask) == tag)
+            return uint32_t(p);
+    }
+    const uint32_t off = resolve();
+    const StateLayout* cur = site.layout.load(std::memory_order_acquire);
+    if (cur != layout)
+    {
+        // Another layout owns the site in this epoch: do not cache.
+        if (cur && (site.packed.load(std::memory_order_acquire) & ~offset_mask) == tag)
+            return off;
+        if (!site.layout.compare_exchange_strong(cur, layout, std::memory_order_acq_rel))
+            return off;
+    }
+    site.packed.store(tag | off, std::memory_order_release);
+    return off;
+}
 } // namespace detail
 
 // A field of an object of another unit, by name. The offset of the site stays valid while the
@@ -551,13 +577,9 @@ template <class T> HOT_HIDDEN T& field(ShellBase* s, FieldSite& site, const char
     if (!s)
         detail::throw_null_reference((std::string("the handle is null: expected a field '") + name + "'").c_str());
     const ClassRecord* cls = s->cls;
-    if (HOT_UNLIKELY(site.layout != cls->layout || site.epoch != link_epoch || !cls->layout))
-    {
-        site.offset = detail::resolve_field_offset(cls->layout, name, type_key<T>(), cls->name);
-        site.layout = cls->layout;
-        site.epoch = link_epoch;
-    }
-    return *reinterpret_cast<T*>(static_cast<char*>(s->state) + site.offset);
+    const uint32_t off = detail::site_offset(
+        site, cls->layout, [&] { return detail::resolve_field_offset(cls->layout, name, type_key<T>(), cls->name); });
+    return *reinterpret_cast<T*>(static_cast<char*>(s->state) + off);
 }
 
 // A module variable of another unit, by name. The block of the unit changes at a reload, so the
@@ -565,15 +587,11 @@ template <class T> HOT_HIDDEN T& field(ShellBase* s, FieldSite& site, const char
 template <class T> HOT_HIDDEN T& mod_var(const UnitRef& unit, FieldSite& site, const char* name)
 {
     const UnitInfo& u = unit.info;
-    if (HOT_UNLIKELY(site.layout != u.layout || site.epoch != link_epoch || !u.layout || !u.block))
-    {
-        if (!u.block)
-            throw ScriptError(std::string("unit '") + unit.name + "' has no module variable '" + name + "'");
-        site.offset = detail::resolve_field_offset(u.layout, name, type_key<T>(), unit.name);
-        site.layout = u.layout;
-        site.epoch = link_epoch;
-    }
-    return *reinterpret_cast<T*>(static_cast<char*>(u.block) + site.offset);
+    if (!u.block)
+        throw ScriptError(std::string("unit '") + unit.name + "' has no module variable '" + name + "'");
+    const uint32_t off = detail::site_offset(
+        site, u.layout, [&] { return detail::resolve_field_offset(u.layout, name, type_key<T>(), unit.name); });
+    return *reinterpret_cast<T*>(static_cast<char*>(u.block) + off);
 }
 
 } // namespace hot
