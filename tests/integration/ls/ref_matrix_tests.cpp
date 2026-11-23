@@ -362,7 +362,13 @@ std::set<Place> actual(const Case& c, std::string& dump)
     if (c.op == Op::References)
     {
         p["context"] = {{"includeDeclaration", true}};
-        const json r = client.request("textDocument/references", p);
+        json r = client.request("textDocument/references", p);
+        // A loaded runner can give [] at first (the 1 s interactive budget): ask again a few times.
+        for (int i = 0; i < 8 && r.value("result", json::array()).empty(); ++i)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            r = client.request("textDocument/references", p);
+        }
         dump = r.dump();
         all = places_of(r.value("result", json()));
     }

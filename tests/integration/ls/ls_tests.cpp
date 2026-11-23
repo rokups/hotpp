@@ -10830,7 +10830,7 @@ json import_cache_features(bool cache)
     out["diagnostics"] = diags;
     const std::string go = "    float Go(float a) { return this.Heal(a) + this.own; }";
     out["hover_own"] = s.client->request_answered("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("this.own")) + 7)).value("result", json());
-    out["hover_heal"] = s.client->request("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1));
+    out["hover_heal"] = s.client->request_answered("textDocument/hover", doc_pos(s.uri, 3, static_cast<int>(go.find("Heal")) + 1)).value("result", json());
     // A body edit of the import: the text hash changes, so the import must miss.
     std::string base = kSplitBase;
     base.replace(base.find("this.hp + a"), 11, "this.hp * a");
