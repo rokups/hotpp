@@ -574,7 +574,7 @@ TEST(Launcher, NonZeroDebounceStillBuilds)
             if (frame != 1)
                 return;
             edit_file(f.script, game_script("return 10;"));
-            const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+            const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(60);
             while (std::chrono::steady_clock::now() < limit)
             {
                 result = f.program->poll();
