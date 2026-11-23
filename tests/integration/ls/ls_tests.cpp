@@ -7475,13 +7475,13 @@ TEST(LanguageServerNative, ReferencesTellTheUserWhenTheBudgetStopsTheScan)
         "            size = int(line.split(b':')[1])\n"
         "    body = src.read(size)\n"
         "    if b'\"textDocument/didOpen\"' in body and b'b_slow.hot' in body:\n"
-        "        time.sleep(8)\n"
+        "        time.sleep(20)\n"
         "    p.stdin.write(head + body)\n"
         "    p.stdin.flush()\n");
     const std::string clangd = (tools.path() / "slow_clangd").string();
     write_file(clangd, "#!/bin/sh\nexec python3 '" + proxy + "' '" HOT_CLANGD_PATH "' \"$@\"\n");
     std::filesystem::permissions(clangd, std::filesystem::perms::owner_all, std::filesystem::perm_options::add);
-    NativeSession s(kNativeScript, 10000, true, clangd, 10000, kNativeHeader, 5000);
+    NativeSession s(kNativeScript, 10000, true, clangd, 10000, kNativeHeader, 15000);
     for (const char* name : {"a_pet.hot", "b_slow.hot", "c_pet.hot"})
         write_file((s.dir.path() / name).string(), kPetScript);
     json raw;
