@@ -429,8 +429,8 @@ TEST(CoreModule, CopyIsUnlinkedAfterLoad)
 // Two cores in a row use two different file names.
 TEST(CoreModule, CopyNamesDiffer)
 {
-#ifdef _WIN32
-    GTEST_SKIP() << "POSIX test: it reads /proc/self/maps";
+#if defined(_WIN32) || defined(__APPLE__)
+    GTEST_SKIP() << "Linux test: it reads /proc/self/maps";
 #else
     const PrivateTmp tmp;
     hot::LoadResult r = hot::module_from_library(STRESS_SO);
