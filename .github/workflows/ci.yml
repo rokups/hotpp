@@ -298,6 +298,19 @@ jobs:
       - name: Test
         run: ctest --preset linux-clang-aot-only-rel -j2 -E LanguageServer
 
+      # An SDK without the translator has no hot::hotc, hot::hotc_lib and hot::hot_ls.
+      # find_package(Hot) must still configure.
+      - name: SDK smoke without the translator
+        run: |
+          cmake -S . -B "$RUNNER_TEMP/nt-build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DHOT_BUILD_TRANSLATOR=OFF \
+            -DHOT_BUILD_TESTS=OFF -DHOT_INSTALL=ON -DHOT_FORCE_AOT_ONLY=ON -DHOT_SCRIPT_MODE=AOT \
+            -DHOT_ENABLE_CLANG_FILES=OFF -DHOT_ENABLE_JIT=OFF
+          cmake --build "$RUNNER_TEMP/nt-build"
+          cmake --install "$RUNNER_TEMP/nt-build" --prefix "$RUNNER_TEMP/nt-sdk"
+          cmake -DSDK="$RUNNER_TEMP/nt-sdk" -DABSENT="hot::hot_ls;hot::hotc;hot::hotc_lib" \
+            -DCXX_COMPILER=clang++ -DWORK_DIR="$RUNNER_TEMP/nt-smoke" -P tests/sdk_smoke/no_translator.cmake
+
   # The web build with Emscripten 3.1.56 (the preset web-emscripten). The host builds hotc first. The
   # AOT step runs hotc on the host. The sample tests run in node. The release does not wait for it.
   web-emscripten:
