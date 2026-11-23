@@ -108,6 +108,13 @@ LoadResult open_library(const std::string& path, const std::string& origin, bool
             remove_owned_copy(path);
         return r;
     }
+#ifdef _WIN32
+    // A loaded DLL cannot be deleted: the keep-alive object removes the copy after FreeLibrary.
+#else
+    // The mapping stays valid after unlink. A crash or a kill then leaves no copy in the temp directory.
+    if (owned_copy)
+        remove_owned_copy(path);
+#endif
     std::shared_ptr<void> owner(h, [path, owned_copy](void* handle)
     {
 #ifdef _WIN32

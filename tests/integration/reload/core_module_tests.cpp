@@ -323,6 +323,29 @@ TEST_P(BackendTests, CodeHoldingFieldBlocksTheUnload)
     EXPECT_NE(s.loader.stats_text().find("unload blocked"), std::string::npos);
 }
 
+// The loader unlinks the private core copy right after the load: a crash leaves no file behind.
+TEST(CoreModule, CopyIsUnlinkedAfterLoad)
+{
+#ifdef _WIN32
+    GTEST_SKIP() << "a loaded DLL cannot be deleted";
+#else
+    namespace fs = std::filesystem;
+    auto count = [] {
+        size_t n = 0;
+        for (const auto& e : fs::directory_iterator(fs::temp_directory_path()))
+            n += e.path().filename().string().rfind("hot-core-", 0) == 0;
+        return n;
+    };
+    hot::LoadResult r = hot::module_from_library(STRESS_SO);
+    ASSERT_TRUE(r) << r.error;
+    const size_t before = count();
+    hot::LoadResult core = r.module->make_core();
+    ASSERT_TRUE(core) << core.error;
+    EXPECT_LE(count(), before);
+    EXPECT_NE(core.module->register_fn, nullptr);
+#endif
+}
+
 // The core copy must not follow a symlink that another user planted at the old predictable name.
 TEST(CoreModule, CopyDoesNotFollowPlantedSymlink)
 {
@@ -344,7 +367,7 @@ TEST(CoreModule, CopyDoesNotFollowPlantedSymlink)
     }
     hot::LoadResult r = hot::module_from_library(STRESS_SO);
     ASSERT_TRUE(r) << r.error;
-    // The copy must live in a new private directory, and the directory must go with the copy.
+    // The loader unlinks the copy right after dlopen: no private directory stays in the temp directory.
     auto core_entries = [] {
         std::set<fs::path> names;
         for (const auto& e : fs::directory_iterator(fs::temp_directory_path()))
@@ -355,16 +378,10 @@ TEST(CoreModule, CopyDoesNotFollowPlantedSymlink)
     const std::set<fs::path> before = core_entries();
     hot::LoadResult core = r.module->make_core();
     EXPECT_TRUE(core) << core.error;
-    std::set<fs::path> created;
     for (const fs::path& e : core_entries())
-        if (!before.count(e))
-            created.insert(e);
-    for (const fs::path& e : created)
-        EXPECT_TRUE(fs::is_directory(fs::symlink_status(e))) << e;
-    EXPECT_FALSE(created.empty());
+        EXPECT_TRUE(before.count(e)) << "new entry " << e;
+    EXPECT_NE(core.module->register_fn, nullptr);
     core = {};
-    for (const fs::path& e : created)
-        EXPECT_FALSE(fs::exists(fs::symlink_status(e))) << e;
     r = {};
     std::ifstream in(decoy);
     std::string text;
