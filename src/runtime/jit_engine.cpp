@@ -49,6 +49,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <chrono>
+#include <condition_variable>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -119,6 +120,8 @@ struct TlsRegistry
 {
     std::mutex mutex;
     std::multimap<void*, TlsEntry*> entries; // keyed by the dso handle
+    std::map<void*, int> running; // the destructors that run now, by dso handle
+    std::condition_variable idle; // notified when a running destructor ends
 };
 
 // Never destroyed: a thread can exit after the engine is gone.
@@ -133,9 +136,8 @@ int host_dso_anchor; // lives until the process ends
 void tls_trampoline(void* p)
 {
     auto* e = static_cast<TlsEntry*>(p);
-    bool dead;
+    TlsRegistry& r = tls_registry();
     {
-        TlsRegistry& r = tls_registry();
         std::lock_guard<std::mutex> lock(r.mutex);
         auto range = r.entries.equal_range(e->dso);
         for (auto it = range.first; it != range.second; ++it)
@@ -144,10 +146,20 @@ void tls_trampoline(void* p)
                 r.entries.erase(it);
                 break;
             }
-        dead = e->dead;
+        if (e->dead)
+        {
+            delete e;
+            return;
+        }
+        ++r.running[e->dso];
     }
-    if (!dead)
-        e->dtor(e->obj);
+    e->dtor(e->obj); // no lock: the destructor can call the hook
+    {
+        std::lock_guard<std::mutex> lock(r.mutex);
+        if (--r.running[e->dso] == 0)
+            r.running.erase(e->dso);
+    }
+    r.idle.notify_all();
     delete e;
 }
 
@@ -168,13 +180,19 @@ extern "C" int hot_cxa_thread_atexit(void (*dtor)(void*), void* obj, void* dso)
     return __cxa_thread_atexit(tls_trampoline, e, &host_dso_anchor);
 }
 
+// Waits for the running destructors of the dylib. A destructor of a generation that removes the same
+// generation waits for itself and hangs. A thread_local destructor must not release the last
+// reference of its generation. It must not take a lock that the caller of the unload holds.
 void tls_mark_dead(void* dso)
 {
     TlsRegistry& r = tls_registry();
-    std::lock_guard<std::mutex> lock(r.mutex);
-    auto range = r.entries.equal_range(dso);
-    for (auto it = range.first; it != range.second; ++it)
-        it->second->dead = true;
+    std::unique_lock<std::mutex> lock(r.mutex);
+    r.idle.wait(lock, [&] {
+        auto range = r.entries.equal_range(dso);
+        for (auto it = range.first; it != range.second; ++it) // a running destructor can add entries
+            it->second->dead = true;
+        return r.running.find(dso) == r.running.end();
+    });
 }
 } // namespace
 #endif

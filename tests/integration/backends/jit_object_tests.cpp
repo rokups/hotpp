@@ -372,37 +372,51 @@ TEST(JitObjectTests, BadObjectIsAnError)
 // A thread_local with a destructor in script code registers the destructor with the C library on the
 // first use. The script unloads while the thread lives. Then the thread exits. A child process runs
 // the scenario, because a crash would kill the test executable.
-// The child code. "exit_first" lets the thread exit before the unload. Returns the exit code.
-static int tls_child(bool exit_first)
+// Adds a script with a thread_local object. Its destructor notes "what". Returns the entry function.
+static int (*add_tls_script(hot_jit_engine* engine, const char* name, int what, hot_jit_dylib** dylib))()
 {
-    alarm(60);
-    const char* path = "/hot-jit-object-test/tls.cpp";
-    const char* source =
-        "extern \"C\" void hot_s1_note(int what);\n"
-        "struct T { int v = 1; ~T() { hot_s1_note(5); } };\n"
-        "extern \"C\" int tls_touch() { thread_local T t; return t.v; }\n";
+    const std::string path = std::string("/hot-jit-object-test/") + name + ".cpp";
+    const std::string source = "extern \"C\" void hot_s1_note(int what);\n"
+                               "struct T { int v = 1; ~T() { hot_s1_note(" +
+                               std::to_string(what) +
+                               "); } };\n"
+                               "extern \"C\" int tls_touch() { thread_local T t; return t.v; }\n";
     std::vector<std::string> flags = {HOT_CXX, "-std=c++20", "-O1", "-fPIC", "-fexceptions", "-fcxx-exceptions",
         "-resource-dir=" HOT_RESOURCE_DIR, path};
     std::vector<const char*> args;
     for (const std::string& f : flags)
         args.push_back(f.c_str());
-    const char* texts[] = {source};
-    const char* paths[] = {path};
+    const char* texts[] = {source.c_str()};
+    const char* paths[] = {path.c_str()};
     hot_jit_ir* ir = nullptr;
     char* diagnostics = nullptr;
     if (!hot_jit_compile(args.data(), args.size(), paths, texts, 1, &ir, &diagnostics, nullptr))
-        return 10;
-    hot_jit_engine* engine = make_engine(0);
+        return nullptr;
     char* error = nullptr;
-    hot_jit_dylib* dylib = hot_jit_add(engine, "tls", ir, nullptr, nullptr, 0, &error);
-    if (!dylib)
+    *dylib = hot_jit_add(engine, name, ir, nullptr, nullptr, 0, &error);
+    return *dylib ? find<int()>(*dylib, "tls_touch") : nullptr;
+}
+
+// The child code. "exit_first" lets the thread exit before the unload. "two" adds a second script
+// that stays loaded. Returns the exit code.
+static int tls_child(bool exit_first, bool two = false)
+{
+    alarm(60);
+    hot_jit_engine* engine = make_engine(0);
+    hot_jit_dylib *dylib = nullptr, *dylib2 = nullptr;
+    auto touch = add_tls_script(engine, "tls", 5, &dylib);
+    if (!touch)
         return 11;
-    auto touch = find<int()>(dylib, "tls_touch");
+    auto touch2 = two ? add_tls_script(engine, "tls2", 6, &dylib2) : nullptr;
+    if (two && !touch2)
+        return 10;
     std::mutex m;
     std::condition_variable cv;
     bool touched = false, release = false;
     std::thread t([&] {
         touch();
+        if (touch2)
+            touch2();
         {
             std::lock_guard<std::mutex> l(m);
             touched = true;
@@ -430,18 +444,25 @@ static int tls_child(bool exit_first)
             return 12;
     }
     hot_jit_remove(dylib);
+    if (two)
+    {
+        release_thread(); // the live script still runs its destructor
+        hot_jit_remove(dylib2);
+        hot_jit_engine_free(engine);
+        return hot_s1_events[5] == 0 && hot_s1_events[6] == 1 ? 0 : 14;
+    }
     hot_jit_engine_free(engine);
     if (!exit_first)
         release_thread(); // the destructor is dropped: no crash
     return hot_s1_events[5] == (exit_first ? 1 : 0) ? 0 : 13; // no second call
 }
 
-static void run_tls_child(bool exit_first)
+static void run_tls_child(bool exit_first, bool two = false)
 {
     const pid_t pid = fork();
     ASSERT_GE(pid, 0);
     if (pid == 0)
-        _exit(tls_child(exit_first));
+        _exit(tls_child(exit_first, two));
     int status = 0;
     ASSERT_EQ(waitpid(pid, &status, 0), pid);
     EXPECT_TRUE(WIFEXITED(status) && WEXITSTATUS(status) == 0)
@@ -458,6 +479,11 @@ TEST(JitObjectTests, ThreadLocalDestructorAfterUnload)
 TEST(JitObjectTests, ThreadLocalDestructorRunsBeforeUnload)
 {
     run_tls_child(true);
+}
+
+TEST(JitObjectTests, ThreadLocalDestructorOfALiveScriptRunsAfterAnotherUnloads)
+{
+    run_tls_child(false, true);
 }
 #endif
 
