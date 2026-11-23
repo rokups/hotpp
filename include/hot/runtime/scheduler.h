@@ -181,7 +181,8 @@ inline Scheduler& owner_or(TaskPromiseBase& p, Scheduler& fallback) noexcept
 } // namespace detail
 
 // The awaiter of hot::yield() and hot::sleep(d). Only a task can await it. The frame parks in
-// the scheduler that owns it (hot::spawn), else in hot::scheduler().
+// the scheduler that owns it (hot::spawn) or that owns its nearest awaiting ancestor, else in
+// hot::scheduler().
 struct SleepAwaiter
 {
     // The frame stops running in park_locked, under the lock: not in the wrapper of the co_await.

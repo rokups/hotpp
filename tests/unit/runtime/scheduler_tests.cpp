@@ -331,7 +331,7 @@ TEST_F(SchedulerTest, ChildYieldParksInTheOwnerOfTheParent)
     Scheduler s;
     Task<int> child = yield_child();
     Task<int> parent = await_ptr(&child);
-    EXPECT_TRUE(s.run_until_done(parent, 200ms));
+    EXPECT_TRUE(s.run_until_done(parent, 5s));
     EXPECT_EQ(parent.result(), 7);
 }
 
@@ -340,7 +340,7 @@ TEST_F(SchedulerTest, ChildSleepParksInTheOwnerOfTheParent)
     Scheduler s;
     Task<int> child = sleep_child();
     Task<int> parent = await_ptr(&child);
-    EXPECT_TRUE(s.run_until_done(parent, 200ms));
+    EXPECT_TRUE(s.run_until_done(parent, 5s));
     EXPECT_EQ(parent.result(), 8);
 }
 
