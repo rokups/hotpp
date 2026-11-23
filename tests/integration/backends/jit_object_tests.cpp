@@ -22,6 +22,15 @@
 #include <string>
 #include <vector>
 
+#ifdef __linux__
+    #include <sys/wait.h>
+    #include <unistd.h>
+
+    #include <condition_variable>
+    #include <mutex>
+    #include <thread>
+#endif
+
 #if !defined(_WIN32)
 
 extern "C"
@@ -357,5 +366,75 @@ TEST(JitObjectTests, BadObjectIsAnError)
     EXPECT_FALSE(take_text(error).empty());
     hot_jit_engine_free(engine);
 }
+
+#ifdef __linux__
+// HOT-100: crashes until the unload runs or drops the thread destructors
+// A thread_local with a destructor in script code registers the destructor with the C library on the
+// first use. The script unloads while the thread lives. Then the thread exits. A child process runs
+// the scenario, because a crash would kill the test executable.
+TEST(JitObjectTests, DISABLED_ThreadLocalDestructorAfterUnload)
+{
+    const pid_t pid = fork();
+    ASSERT_GE(pid, 0);
+    if (pid == 0)
+    {
+        alarm(60);
+        const char* path = "/hot-jit-object-test/tls.cpp";
+        const char* source =
+            "extern \"C\" void hot_s1_note(int what);\n"
+            "struct T { int v = 1; ~T() { hot_s1_note(5); } };\n"
+            "extern \"C\" int tls_touch() { thread_local T t; return t.v; }\n";
+        std::vector<std::string> flags = {HOT_CXX, "-std=c++20", "-O1", "-fPIC", "-fexceptions", "-fcxx-exceptions",
+            "-resource-dir=" HOT_RESOURCE_DIR, path};
+        std::vector<const char*> args;
+        for (const std::string& f : flags)
+            args.push_back(f.c_str());
+        const char* texts[] = {source};
+        const char* paths[] = {path};
+        hot_jit_ir* ir = nullptr;
+        char* diagnostics = nullptr;
+        if (!hot_jit_compile(args.data(), args.size(), paths, texts, 1, &ir, &diagnostics, nullptr))
+            _exit(10);
+        hot_jit_engine* engine = make_engine(0);
+        char* error = nullptr;
+        hot_jit_dylib* dylib = hot_jit_add(engine, "tls", ir, nullptr, nullptr, 0, &error);
+        if (!dylib)
+            _exit(11);
+        auto touch = find<int()>(dylib, "tls_touch");
+        std::mutex m;
+        std::condition_variable cv;
+        bool touched = false, release = false;
+        std::thread t([&] {
+            touch();
+            {
+                std::lock_guard<std::mutex> l(m);
+                touched = true;
+            }
+            cv.notify_all();
+            std::unique_lock<std::mutex> l(m);
+            cv.wait(l, [&] { return release; });
+        }); // the thread exit runs the destructor of the script
+        {
+            std::unique_lock<std::mutex> l(m);
+            cv.wait(l, [&] { return touched; });
+        }
+        hot_jit_remove(dylib);
+        hot_jit_engine_free(engine);
+        {
+            std::lock_guard<std::mutex> l(m);
+            release = true;
+        }
+        cv.notify_all();
+        t.join();
+        fputs("done\n", stderr);
+        _exit(0);
+    }
+    int status = 0;
+    ASSERT_EQ(waitpid(pid, &status, 0), pid);
+    EXPECT_TRUE(WIFEXITED(status) && WEXITSTATUS(status) == 0)
+        << (WIFSIGNALED(status) ? "child killed by signal " + std::to_string(WTERMSIG(status))
+                                : "child exit code " + std::to_string(WEXITSTATUS(status)));
+}
+#endif
 
 #endif // !_WIN32
