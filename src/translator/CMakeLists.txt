@@ -88,7 +88,8 @@ set_source_files_properties(build_id.cpp PROPERTIES OBJECT_DEPENDS "${_hot_id_he
 target_include_directories(hotc_lib PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 # A new libclang changes the parse, so the id also has the path of the library. build_id.cpp
 # adds the change time and the size of the file at run time.
-target_compile_definitions(hotc_lib PRIVATE HOT_LIBCLANG_FILE_PATH="${HOT_LIBCLANG_FILE}")
+hot_c_string(HOT_LIBCLANG_FILE_C "${HOT_LIBCLANG_FILE}")
+target_compile_definitions(hotc_lib PRIVATE HOT_LIBCLANG_FILE_PATH="${HOT_LIBCLANG_FILE_C}")
 target_include_directories(hotc_lib PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
@@ -106,7 +107,8 @@ if(HOT_PORTABLE)
     # A portable build holds no build path. The empty value means: the caller or libclang decides.
     target_compile_definitions(hotc_lib PRIVATE HOT_RESOURCE_DIR="")
 else()
-    target_compile_definitions(hotc_lib PRIVATE HOT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}")
+    hot_c_string(CLANG_RESOURCE_DIR_C "${CLANG_RESOURCE_DIR}")
+    target_compile_definitions(hotc_lib PRIVATE HOT_RESOURCE_DIR="${CLANG_RESOURCE_DIR_C}")
     # The target and the sysroot of the parse: the same as for the script modules. An empty value
     # adds no flag (the default of libclang).
     target_compile_definitions(hotc_lib PRIVATE HOT_PARSE_TARGET="${HOT_HOTC_TARGET}"

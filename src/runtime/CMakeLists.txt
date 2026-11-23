@@ -74,7 +74,8 @@ else()
 endif()
 # paths.cpp reads these (include/hot/paths.h). The compile flags are not paths, so both modes
 # have them. A portable build (HOT_PORTABLE) defines no build path. It finds the paths at run time.
-target_compile_definitions(hot_runtime PRIVATE HOT_DEFAULT_CXXFLAGS="${HOT_CXXFLAGS_JOINED}")
+hot_c_string(HOT_CXXFLAGS_C "${HOT_CXXFLAGS_JOINED}")
+target_compile_definitions(hot_runtime PRIVATE HOT_DEFAULT_CXXFLAGS="${HOT_CXXFLAGS_C}")
 # The target and the sysroot of the script modules (HOT_HOTC_TARGET, HOT_SCRIPT_SYSROOT) for
 # DefaultPaths. They go with the compiler HOT_SCRIPT_COMPILER (HOT_DEFAULT_CXX). An empty value
 # adds no flag. The triple is not a path, so both modes have it. The sysroot is a build path, so
@@ -86,10 +87,13 @@ endif()
 if(HOT_PORTABLE)
     target_compile_definitions(hot_runtime PRIVATE HOT_PORTABLE=1)
 else()
+    hot_c_string(HOT_DEFAULT_CXX_C "${HOT_SCRIPT_COMPILER}")
+    hot_c_string(HOT_DEFAULT_INCLUDES_C "${HOT_DEFAULT_INCLUDES_JOINED}")
+    hot_c_string(HOT_DEFAULT_RESOURCE_DIR_C "${CLANG_RESOURCE_DIR}")
     target_compile_definitions(hot_runtime PRIVATE
-        HOT_DEFAULT_CXX="${HOT_SCRIPT_COMPILER}"
-        HOT_DEFAULT_INCLUDES="${HOT_DEFAULT_INCLUDES_JOINED}"
-        HOT_DEFAULT_RESOURCE_DIR="${CLANG_RESOURCE_DIR}"
+        HOT_DEFAULT_CXX="${HOT_DEFAULT_CXX_C}"
+        HOT_DEFAULT_INCLUDES="${HOT_DEFAULT_INCLUDES_C}"
+        HOT_DEFAULT_RESOURCE_DIR="${HOT_DEFAULT_RESOURCE_DIR_C}"
         HOT_DEFAULT_WORK_DIR="${HOT_SCRATCH_DIR}/hot_work")
 endif()
 

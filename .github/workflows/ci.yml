@@ -507,6 +507,12 @@ jobs:
           path: dist/hotpp-sdk-windows-x86_64.zip
           if-no-files-found: error
 
+      # The build stages above use continue-on-error, so the later steps run. A failed stage must
+      # still make the job red.
+      - name: Fail the job when a build stage failed
+        if: ${{ !cancelled() && (steps.hotc.outcome == 'failure' || steps.runtime.outcome == 'failure' || steps.all.outcome == 'failure') }}
+        run: exit 1
+
   # The test build of Windows has both run-time backends (the preset vs-both), like build-linux.
   # The job builds all targets once. The job test-windows uses the build tree of this job. The
   # build tree has absolute paths (the CMake cache and the LLVM release folder cmake-build), so the
