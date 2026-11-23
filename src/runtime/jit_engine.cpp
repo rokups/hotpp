@@ -41,6 +41,9 @@
 #include <llvm/Transforms/Utils/Cloning.h>
 
 #include <algorithm>
+#ifdef __linux__
+    #include <dlfcn.h>
+#endif
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -95,6 +98,86 @@ struct hot_jit_engine
     bool capture = false;
     std::map<std::string, hot_jit_dylib*> pending;
 };
+
+#if defined(__linux__)
+namespace
+{
+// shortcut: Linux glibc only: macOS _tlv_atexit and Windows emutls are not handled
+// JIT code registers the destructor of a thread_local object with __cxa_thread_atexit. glibc keeps
+// the entry until the thread exits. The code can be gone then. The hook puts a trampoline in glibc.
+// hot_jit_remove marks the entries of a removed dylib as dead. The trampoline drops a dead entry,
+// so the destructor of such an object does not run.
+struct TlsEntry
+{
+    void (*dtor)(void*);
+    void* obj;
+    void* dso; // the __dso_handle of the dylib
+    bool dead;
+};
+
+struct TlsRegistry
+{
+    std::mutex mutex;
+    std::multimap<void*, TlsEntry*> entries; // keyed by the dso handle
+};
+
+// Never destroyed: a thread can exit after the engine is gone.
+TlsRegistry& tls_registry()
+{
+    static auto* r = new TlsRegistry;
+    return *r;
+}
+
+int host_dso_anchor; // lives until the process ends
+
+void tls_trampoline(void* p)
+{
+    auto* e = static_cast<TlsEntry*>(p);
+    bool dead;
+    {
+        TlsRegistry& r = tls_registry();
+        std::lock_guard<std::mutex> lock(r.mutex);
+        auto range = r.entries.equal_range(e->dso);
+        for (auto it = range.first; it != range.second; ++it)
+            if (it->second == e)
+            {
+                r.entries.erase(it);
+                break;
+            }
+        dead = e->dead;
+    }
+    if (!dead)
+        e->dtor(e->obj);
+    delete e;
+}
+
+extern "C" int __cxa_thread_atexit(void (*)(void*), void*, void*);
+
+extern "C" int hot_cxa_thread_atexit(void (*dtor)(void*), void* obj, void* dso)
+{
+    using Impl = int (*)(void (*)(void*), void*, void*);
+    static const Impl impl = reinterpret_cast<Impl>(dlsym(RTLD_DEFAULT, "__cxa_thread_atexit_impl"));
+    auto* e = new TlsEntry{dtor, obj, dso, false};
+    {
+        TlsRegistry& r = tls_registry();
+        std::lock_guard<std::mutex> lock(r.mutex);
+        r.entries.emplace(dso, e);
+    }
+    if (impl)
+        return impl(tls_trampoline, e, &host_dso_anchor);
+    return __cxa_thread_atexit(tls_trampoline, e, &host_dso_anchor);
+}
+
+void tls_mark_dead(void* dso)
+{
+    TlsRegistry& r = tls_registry();
+    std::lock_guard<std::mutex> lock(r.mutex);
+    auto range = r.entries.equal_range(dso);
+    for (auto it = range.first; it != range.second; ++it)
+        it->second->dead = true;
+}
+} // namespace
+#endif
 
 struct hot_jit_dylib
 {
@@ -804,8 +887,21 @@ void hot_jit_remove(hot_jit_dylib* dylib)
         std::lock_guard<std::mutex> lock(dylib->engine->capture_mutex);
         dylib->engine->pending.erase(dylib->pending_name);
     }
+#if defined(__linux__)
+    void* dso = nullptr;
+    if (dylib->dylib)
+        if (auto sym = jit.lookup(*dylib->dylib, "__dso_handle"))
+            dso = sym->toPtr<void*>();
+        else
+            llvm::consumeError(sym.takeError());
+#endif
     if (dylib->initialized)
         llvm::consumeError(jit.deinitialize(*dylib->dylib));
+#if defined(__linux__)
+    // Before the code is freed: the destructors of the thread_local objects are dropped.
+    if (dso)
+        tls_mark_dead(dso);
+#endif
     if (dylib->tracker)
         llvm::consumeError(dylib->tracker->remove());
     if (dylib->dylib)
@@ -836,6 +932,11 @@ std::unique_ptr<hot_jit_dylib> new_dylib(hot_jit_engine* engine, const char* id,
         symbols[jit.mangleAndIntern(abs_names[i])] =
             llvm::orc::ExecutorSymbolDef(llvm::orc::ExecutorAddr(abs_values[i]),
                 llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Absolute);
+#if defined(__linux__)
+    symbols.try_emplace(jit.mangleAndIntern("__cxa_thread_atexit"),
+        llvm::orc::ExecutorAddr(reinterpret_cast<uint64_t>(&hot_cxa_thread_atexit)),
+        llvm::JITSymbolFlags::Exported | llvm::JITSymbolFlags::Absolute);
+#endif
 #if defined(HOT_JIT_COFF_UNWIND) && defined(_MSC_VER)
     // A throw in the JIT code gives the image base of the JIT object (jit_cxx_throw_exception).
     symbols.try_emplace(jit.mangleAndIntern("_CxxThrowException"),

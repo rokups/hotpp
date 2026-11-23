@@ -368,72 +368,96 @@ TEST(JitObjectTests, BadObjectIsAnError)
 }
 
 #ifdef __linux__
-// HOT-100: crashes until the unload runs or drops the thread destructors
+// HOT-100: the unload drops the thread destructors of the removed script
 // A thread_local with a destructor in script code registers the destructor with the C library on the
 // first use. The script unloads while the thread lives. Then the thread exits. A child process runs
 // the scenario, because a crash would kill the test executable.
-TEST(JitObjectTests, DISABLED_ThreadLocalDestructorAfterUnload)
+// The child code. "exit_first" lets the thread exit before the unload. Returns the exit code.
+static int tls_child(bool exit_first)
 {
-    const pid_t pid = fork();
-    ASSERT_GE(pid, 0);
-    if (pid == 0)
-    {
-        alarm(60);
-        const char* path = "/hot-jit-object-test/tls.cpp";
-        const char* source =
-            "extern \"C\" void hot_s1_note(int what);\n"
-            "struct T { int v = 1; ~T() { hot_s1_note(5); } };\n"
-            "extern \"C\" int tls_touch() { thread_local T t; return t.v; }\n";
-        std::vector<std::string> flags = {HOT_CXX, "-std=c++20", "-O1", "-fPIC", "-fexceptions", "-fcxx-exceptions",
-            "-resource-dir=" HOT_RESOURCE_DIR, path};
-        std::vector<const char*> args;
-        for (const std::string& f : flags)
-            args.push_back(f.c_str());
-        const char* texts[] = {source};
-        const char* paths[] = {path};
-        hot_jit_ir* ir = nullptr;
-        char* diagnostics = nullptr;
-        if (!hot_jit_compile(args.data(), args.size(), paths, texts, 1, &ir, &diagnostics, nullptr))
-            _exit(10);
-        hot_jit_engine* engine = make_engine(0);
-        char* error = nullptr;
-        hot_jit_dylib* dylib = hot_jit_add(engine, "tls", ir, nullptr, nullptr, 0, &error);
-        if (!dylib)
-            _exit(11);
-        auto touch = find<int()>(dylib, "tls_touch");
-        std::mutex m;
-        std::condition_variable cv;
-        bool touched = false, release = false;
-        std::thread t([&] {
-            touch();
-            {
-                std::lock_guard<std::mutex> l(m);
-                touched = true;
-            }
-            cv.notify_all();
-            std::unique_lock<std::mutex> l(m);
-            cv.wait(l, [&] { return release; });
-        }); // the thread exit runs the destructor of the script
+    alarm(60);
+    const char* path = "/hot-jit-object-test/tls.cpp";
+    const char* source =
+        "extern \"C\" void hot_s1_note(int what);\n"
+        "struct T { int v = 1; ~T() { hot_s1_note(5); } };\n"
+        "extern \"C\" int tls_touch() { thread_local T t; return t.v; }\n";
+    std::vector<std::string> flags = {HOT_CXX, "-std=c++20", "-O1", "-fPIC", "-fexceptions", "-fcxx-exceptions",
+        "-resource-dir=" HOT_RESOURCE_DIR, path};
+    std::vector<const char*> args;
+    for (const std::string& f : flags)
+        args.push_back(f.c_str());
+    const char* texts[] = {source};
+    const char* paths[] = {path};
+    hot_jit_ir* ir = nullptr;
+    char* diagnostics = nullptr;
+    if (!hot_jit_compile(args.data(), args.size(), paths, texts, 1, &ir, &diagnostics, nullptr))
+        return 10;
+    hot_jit_engine* engine = make_engine(0);
+    char* error = nullptr;
+    hot_jit_dylib* dylib = hot_jit_add(engine, "tls", ir, nullptr, nullptr, 0, &error);
+    if (!dylib)
+        return 11;
+    auto touch = find<int()>(dylib, "tls_touch");
+    std::mutex m;
+    std::condition_variable cv;
+    bool touched = false, release = false;
+    std::thread t([&] {
+        touch();
         {
-            std::unique_lock<std::mutex> l(m);
-            cv.wait(l, [&] { return touched; });
+            std::lock_guard<std::mutex> l(m);
+            touched = true;
         }
-        hot_jit_remove(dylib);
-        hot_jit_engine_free(engine);
+        cv.notify_all();
+        std::unique_lock<std::mutex> l(m);
+        cv.wait(l, [&] { return release; });
+    });
+    {
+        std::unique_lock<std::mutex> l(m);
+        cv.wait(l, [&] { return touched; });
+    }
+    auto release_thread = [&] {
         {
             std::lock_guard<std::mutex> l(m);
             release = true;
         }
         cv.notify_all();
         t.join();
-        fputs("done\n", stderr);
-        _exit(0);
+    };
+    if (exit_first)
+    {
+        release_thread();
+        if (hot_s1_events[5] != 1) // the destructor runs at the thread exit
+            return 12;
     }
+    hot_jit_remove(dylib);
+    hot_jit_engine_free(engine);
+    if (!exit_first)
+        release_thread(); // the destructor is dropped: no crash
+    return hot_s1_events[5] == (exit_first ? 1 : 0) ? 0 : 13; // no second call
+}
+
+static void run_tls_child(bool exit_first)
+{
+    const pid_t pid = fork();
+    ASSERT_GE(pid, 0);
+    if (pid == 0)
+        _exit(tls_child(exit_first));
     int status = 0;
     ASSERT_EQ(waitpid(pid, &status, 0), pid);
     EXPECT_TRUE(WIFEXITED(status) && WEXITSTATUS(status) == 0)
         << (WIFSIGNALED(status) ? "child killed by signal " + std::to_string(WTERMSIG(status))
                                 : "child exit code " + std::to_string(WEXITSTATUS(status)));
+}
+
+// A child process runs the scenario, because a crash would kill the test executable.
+TEST(JitObjectTests, ThreadLocalDestructorAfterUnload)
+{
+    run_tls_child(false);
+}
+
+TEST(JitObjectTests, ThreadLocalDestructorRunsBeforeUnload)
+{
+    run_tls_child(true);
 }
 #endif
 

@@ -96,6 +96,8 @@ A warning does not stop the translation. These forms give a warning.
 | A class template or a partial specialization that has a base class, also in a namespace and also when the base is a standard class such as `std::vector<T>`, for example `template <class T> class Box : public Actor` | `the class template 'Box' has a base class, but it is not a script class: it is copied as plain C++ and has no hot reload` |
 | A `static` or `thread_local` local variable in a method, a constructor, a destructor, a static method, a free function (also in a namespace) or a lambda in them | `the static local variable 'n' resets to its initial value when the script reloads: a reload loads a new module` (a `const` local gives no warning) |
 
+With the JIT backend, the destructor of a `thread_local` object does not run when its thread exits after the script unloads. The code is gone, so the engine drops the call (Linux glibc only).
+
 An explicit constructor, for example `explicit Player(int hp)`, is allowed. It is a normal constructor.
 
 A written copy constructor `Player(const Player& o)` and a written move constructor `Player(Player&& o)` are allowed. They are normal constructors: `new Player(*p)` calls the copy constructor.
