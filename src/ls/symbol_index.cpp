@@ -76,7 +76,7 @@ std::optional<Header> parse_header(const std::string& line)
 // Reads the first line of a shard file.
 std::optional<Header> read_header(const std::string& file)
 {
-    std::ifstream in(file, std::ios::binary);
+    std::ifstream in(utf8_path(file), std::ios::binary);
     std::string line;
     if (!in || !std::getline(in, line))
         return std::nullopt;
@@ -478,7 +478,7 @@ std::string SymbolIndex::cached_digest(const std::string& script_path, const std
 
 std::string SymbolIndex::shard_path(const std::string& script_path) const
 {
-    return (fs::path(dir_) / (hex16(fnv1a(script_path, 14695981039346656037ull)) + ".idx")).string();
+    return path_utf8(utf8_path(dir_) / (hex16(fnv1a(script_path, 14695981039346656037ull)) + ".idx"));
 }
 
 std::optional<IndexShard> SymbolIndex::load(const std::string& script_path, const std::string& dig)
@@ -490,7 +490,7 @@ std::optional<IndexShard> SymbolIndex::load(const std::string& script_path, cons
     std::optional<IndexShard> result;
     {
         std::shared_lock<std::shared_mutex> lock(shard_mutex_);
-        std::ifstream in(file, std::ios::binary);
+        std::ifstream in(utf8_path(file), std::ios::binary);
         std::string line;
         if (!in || !std::getline(in, line))
             return std::nullopt;
@@ -532,7 +532,7 @@ std::optional<IndexShard> SymbolIndex::load(const std::string& script_path, cons
         if (now && now->version == bad->version && now->digest == bad->digest && now->path == bad->path)
         {
             std::error_code ec;
-            fs::remove(file, ec);
+            fs::remove(utf8_path(file), ec);
         }
         return std::nullopt;
     }
@@ -545,13 +545,13 @@ bool SymbolIndex::store(const std::string& script_path, const std::string& dig, 
         return false;
     std::shared_lock<std::shared_mutex> lock(shard_mutex_);
     std::error_code ec;
-    fs::create_directories(dir_, ec);
+    fs::create_directories(utf8_path(dir_), ec);
     const std::string file = shard_path(script_path);
     static std::atomic<unsigned long long> tmp_counter{0};
     const std::string tmp = file + "." + std::to_string(hot::detail::process_id()) + "." +
                             std::to_string(tmp_counter.fetch_add(1)) + ".tmp";
     {
-        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        std::ofstream out(utf8_path(tmp), std::ios::binary | std::ios::trunc);
         if (!out)
             return false;
         out << kMagic << ' ' << kFormatVersion << ' ' << dig << ' ' << script_path << '\n' << shard_json(shard).dump();
@@ -559,7 +559,7 @@ bool SymbolIndex::store(const std::string& script_path, const std::string& dig, 
         if (!out)
         {
             out.close();
-            fs::remove(tmp, ec);
+            fs::remove(utf8_path(tmp), ec);
             return false;
         }
     }
@@ -573,13 +573,13 @@ bool SymbolIndex::store(const std::string& script_path, const std::string& dig, 
     {
         if (i > 0)
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        fs::rename(tmp, file, ec); // atomic: a reader sees the old or the new shard
+        fs::rename(utf8_path(tmp), utf8_path(file), ec); // atomic: a reader sees the old or the new shard
         if (!ec)
             break;
     }
     if (ec)
     {
-        fs::remove(tmp, ec);
+        fs::remove(utf8_path(tmp), ec);
         return false;
     }
     ++stores_;
@@ -630,7 +630,7 @@ int SymbolIndex::prune()
     std::unique_lock<std::shared_mutex> lock(shard_mutex_);
     int removed = 0;
     std::error_code ec;
-    for (fs::directory_iterator it(dir_, ec), end; !ec && it != end; it.increment(ec))
+    for (fs::directory_iterator it(utf8_path(dir_), ec), end; !ec && it != end; it.increment(ec))
     {
         const fs::path p = it->path();
         std::error_code ec2;
@@ -644,8 +644,8 @@ int SymbolIndex::prune()
         }
         if (p.extension() != ".idx")
             continue;
-        const auto h = read_header(p.string());
-        if (!h || h->version != kFormatVersion || !fs::exists(h->path, ec2))
+        const auto h = read_header(path_utf8(p));
+        if (!h || h->version != kFormatVersion || !fs::exists(utf8_path(h->path), ec2))
         {
             if (fs::remove(p, ec2))
                 ++removed;
@@ -661,12 +661,12 @@ int SymbolIndex::remove_if(const std::function<bool(const std::string&)>& match)
     std::unique_lock<std::shared_mutex> lock(shard_mutex_);
     int removed = 0;
     std::error_code ec;
-    for (fs::directory_iterator it(dir_, ec), end; !ec && it != end; it.increment(ec))
+    for (fs::directory_iterator it(utf8_path(dir_), ec), end; !ec && it != end; it.increment(ec))
     {
         const fs::path p = it->path();
         if (p.extension() != ".idx")
             continue;
-        const auto h = read_header(p.string());
+        const auto h = read_header(path_utf8(p));
         std::error_code ec2;
         if (h && match(h->path) && fs::remove(p, ec2))
             ++removed;

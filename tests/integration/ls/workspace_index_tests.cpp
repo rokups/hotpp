@@ -3,6 +3,7 @@
 // For a copy, see <https://opensource.org/licenses/MIT> or the accompanying LICENSE file.
 
 // Tests of the core of the workspace index (HOT-34). They need no clangd and no thread.
+#include "long_path.h"
 #include "script_text.h"
 #include "workspace_index.h"
 
@@ -907,4 +908,43 @@ TEST(WorkspaceIndex, PreludeKeyHasTheFormOfIndexKey)
     WorkspaceIndex idx;
     idx.set(path, e);
     EXPECT_EQ(idx.files_with_dep(fs::path(prelude).lexically_normal().string()), (std::vector<std::string>{path}));
+}
+
+// HOT-87: a root folder and a script name with non-ASCII characters (a user name like "Jos\xC3\xA9").
+TEST(WorkspaceIndex, NonAsciiRootKeepsTheShardAndResolvesRelativeImports)
+{
+    const std::string name = "\xC3\xB1" "and\xC3\xBA.hot"; // the UTF-8 name of "nandu.hot" with accents
+    const fs::path root = fs::temp_directory_path() /
+        utf8_path("hot_Jos\xC3\xA9_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    fs::create_directories(root);
+    struct Cleanup
+    {
+        fs::path p;
+        ~Cleanup()
+        {
+            std::error_code ec;
+            fs::remove_all(p, ec);
+        }
+    } cleanup{root};
+    const std::string lib_text = "int helper() { return 1; }\n";
+    const std::string main_text = "using \"" + name + "\";\nclass M\n{\n    int f() { return helper(); }\n}\n";
+    const std::string lib = path_utf8(root / utf8_path(name));
+    const std::string main_path = path_utf8(root / "main.hot");
+    std::ofstream(utf8_path(lib), std::ios::binary) << lib_text;
+    std::ofstream(utf8_path(main_path), std::ios::binary) << main_text;
+
+    // The relative import resolves to the script with the non-ASCII name.
+    const auto imports = script_imports_in(options_for(main_path), main_path, main_text);
+    ASSERT_EQ(imports.size(), 1u);
+    EXPECT_EQ(path_utf8(utf8_path(imports[0]).lexically_normal()), path_utf8(utf8_path(lib).lexically_normal()));
+
+    // The shard is stored in a non-ASCII folder, loaded, and not pruned.
+    SymbolIndex index;
+    index.open(path_utf8(root / "index"));
+    IndexShard shard;
+    shard.has_table = true; // load() gives only a shard with the table marker
+    ASSERT_TRUE(index.store(lib, "dig", shard));
+    EXPECT_TRUE(index.load(lib, "dig").has_value());
+    EXPECT_EQ(index.prune(), 0);
+    EXPECT_TRUE(index.load(lib, "dig").has_value());
 }

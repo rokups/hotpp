@@ -34,7 +34,7 @@ namespace
 // stamp keeps the spelling, because the stat must name the file that the compiler reads.
 std::string dep_key(const std::string& spelling)
 {
-    return utf8_path(spelling).lexically_normal().string();
+    return path_utf8(utf8_path(spelling).lexically_normal());
 }
 } // namespace
 
@@ -150,10 +150,10 @@ std::vector<std::shared_ptr<const Entry>> WorkspaceIndex::all_entries() const
 bool stat_file(const std::string& path, FileStamp& out)
 {
     std::error_code ec;
-    const auto size = fs::file_size(path, ec);
+    const auto size = fs::file_size(utf8_path(path), ec);
     if (ec)
         return false;
-    const auto time = fs::last_write_time(path, ec);
+    const auto time = fs::last_write_time(utf8_path(path), ec);
     if (ec)
         return false;
     out.size = static_cast<uint64_t>(size);

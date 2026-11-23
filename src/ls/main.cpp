@@ -9,10 +9,31 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#ifdef _WIN32
+    #include <windows.h>
+    #include <shellapi.h>
+#endif
 
 int main(int argc, char** argv)
 {
     std::vector<std::string> args(argv + 1, argv + argc);
+#ifdef _WIN32
+    // On Windows argv uses the ANSI code page. The server needs UTF-8 paths.
+    int wargc = 0;
+    if (LPWSTR* wargv = CommandLineToArgvW(GetCommandLineW(), &wargc))
+    {
+        args.clear();
+        for (int i = 1; i < wargc; ++i)
+        {
+            const int n = WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, nullptr, 0, nullptr, nullptr);
+            std::string a(n > 0 ? n - 1 : 0, '\0');
+            if (n > 1)
+                WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1, a.data(), n, nullptr, nullptr);
+            args.push_back(std::move(a));
+        }
+        LocalFree(wargv);
+    }
+#endif
     for (const std::string& a : args)
         if (a == "--help" || a == "-h")
         {

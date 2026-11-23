@@ -177,7 +177,7 @@ std::string path_to_uri(const std::string& path)
 
 std::optional<std::string> read_file(const std::string& path)
 {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(utf8_path(path), std::ios::binary);
     if (!in)
         return std::nullopt;
     std::stringstream ss;
@@ -322,7 +322,7 @@ static std::string json_str(const json& j, const char* key)
 // The valid entry of a path in an index snapshot, or null when the snapshot has none.
 static std::shared_ptr<const Entry> entry_in(const IndexSnapshot& snap, const std::string& path)
 {
-    const auto it = snap.entries.find(fs::path(path).lexically_normal().string());
+    const auto it = snap.entries.find(path_utf8(utf8_path(path).lexically_normal()));
     return it != snap.entries.end() ? it->second : nullptr;
 }
 
@@ -335,7 +335,7 @@ static std::shared_ptr<const Entry> checked_entry(IndexSnapshot& snap, const std
         return nullptr;
     if (disk == e->text)
         return e;
-    snap.entries.erase(fs::path(path).lexically_normal().string());
+    snap.entries.erase(path_utf8(utf8_path(path).lexically_normal()));
     return nullptr;
 }
 
@@ -1581,7 +1581,7 @@ private:
         hotc::TranslateOptions o = translate_options(d);
         o.fs = open_docs_fs_;
         std::set<std::string> seen;
-        seen.insert(fs::path(d.path).lexically_normal().string());
+        seen.insert(path_utf8(utf8_path(d.path).lexically_normal()));
         struct Todo
         {
             std::string path, dir;
@@ -1589,13 +1589,13 @@ private:
         };
         std::vector<Todo> todo;
         for (const std::string& pth : using_paths(text))
-            todo.push_back({pth, fs::path(d.path).parent_path().string(), 0});
+            todo.push_back({pth, path_utf8(utf8_path(d.path).parent_path()), 0});
         for (size_t i = 0; i < todo.size() && i < 64; ++i)
         {
             std::string itext, file, unit;
             if (!hotc::find_import(o, todo[i].path, todo[i].dir, std::string(), itext, file, unit))
                 continue;
-            const std::string key = fs::path(file).lexically_normal().string();
+            const std::string key = path_utf8(utf8_path(file).lexically_normal());
             if (!seen.insert(key).second)
                 continue;
             const uint64_t h = hotc::text_hash(itext);
@@ -1615,7 +1615,7 @@ private:
                 depths->push_back(todo[i].depth);
             for (const std::string& pth : facts->imports)
                 if (pth.size() > 4 && pth.compare(pth.size() - 4, 4, ".hot") == 0)
-                    todo.push_back({pth, fs::path(file).parent_path().string(), todo[i].depth + 1});
+                    todo.push_back({pth, path_utf8(utf8_path(file).parent_path()), todo[i].depth + 1});
         }
         return out;
     }
@@ -1788,7 +1788,7 @@ private:
     // An inverted map is exact only for a path set that wait_for validated with an empty "missing" list.
     IndexSnapshot index_entries(const std::vector<std::string>& paths, std::chrono::steady_clock::time_point deadline);
     // The index key of a script path: the form of workspace_scripts().
-    static std::string index_key(const std::string& path) { return fs::path(path).lexically_normal().string(); }
+    static std::string index_key(const std::string& path) { return path_utf8(utf8_path(path).lexically_normal()); }
     bool index_active() const { return opt_.background_index && (windex_.started() || windex_.stats().total > 0); }
     // Queues all workspace scripts again with a new config. A host or an option change calls it.
     void reschedule_index();
@@ -1824,12 +1824,12 @@ void Server::read_compile_commands()
     }
     const std::string dir = db[0].value("directory", std::string("."));
     index_seed_ = db[0].value("file", std::string());
-    if (!index_seed_.empty() && fs::path(index_seed_).is_relative())
-        index_seed_ = (fs::path(dir) / index_seed_).lexically_normal().string();
+    if (!index_seed_.empty() && utf8_path(index_seed_).is_relative())
+        index_seed_ = path_utf8((utf8_path(dir) / utf8_path(index_seed_)).lexically_normal());
     auto add_dir = [&](std::string d)
     {
-        if (fs::path(d).is_relative())
-            d = (fs::path(dir) / d).lexically_normal().string();
+        if (utf8_path(d).is_relative())
+            d = path_utf8((utf8_path(dir) / utf8_path(d)).lexically_normal());
         for (const std::string& x : opt_.include_dirs)
             if (x == d)
                 return;
@@ -1924,7 +1924,7 @@ std::string Server::private_cdb_dir()
     if (!opt_.private_clangd_dir || roots_.empty())
         return opt_.compile_commands_dir;
     std::error_code ec;
-    const fs::path dir = fs::path(roots_[0]) / ".cache" / "hot" / "clangd";
+    const fs::path dir = utf8_path(roots_[0]) / ".cache" / "hot" / "clangd";
     fs::create_directories(dir, ec);
     if (ec)
         return opt_.compile_commands_dir;
@@ -2311,7 +2311,7 @@ void Server::on_workspace_folders(const json& p)
     // A folder is known by its normalized path: "/a/b/" and "/a/b" are the same folder.
     auto norm = [](const std::string& path)
     {
-        std::string s = fs::path(path).lexically_normal().string();
+        std::string s = path_utf8(utf8_path(path).lexically_normal());
         while (s.size() > 1 && (s.back() == '/' || s.back() == '\\'))
             s.pop_back();
         return s;
@@ -2460,8 +2460,8 @@ static bool write_file_atomic(const fs::path& path, const std::string& text)
     std::error_code ec;
     fs::create_directories(path.parent_path(), ec);
     static std::atomic<unsigned> counter{0};
-    const fs::path tmp = path.string() + ".tmp" + std::to_string(std::hash<std::thread::id>()(std::this_thread::get_id()))
-        + "_" + std::to_string(counter++);
+    fs::path tmp = path;
+    tmp += ".tmp" + std::to_string(std::hash<std::thread::id>()(std::this_thread::get_id())) + "_" + std::to_string(counter++);
     {
         std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
         if (!f)
@@ -3442,9 +3442,9 @@ json Server::using_completion(const Doc& d, Pos cur, size_t off, size_t line_beg
     if (first == std::string_view::npos || before.compare(first, 5, "using") != 0)
         return empty;
     const size_t q = before.find('"', first + 5);
-    const std::string cur_file = fs::path(d.path).lexically_normal().string();
+    const std::string cur_file = path_utf8(utf8_path(d.path).lexically_normal());
     const Effective eff = effective_options(d.path);
-    std::vector<std::string> dirs = {fs::path(d.path).parent_path().string()};
+    std::vector<std::string> dirs = {path_utf8(utf8_path(d.path).parent_path())};
     dirs.insert(dirs.end(), eff.include_dirs.begin(), eff.include_dirs.end());
     if (q != std::string_view::npos)
     {
@@ -5787,7 +5787,7 @@ void Server::native_uses_in_scripts(const Doc& d, Pos ask, const std::string& wo
         NativeMemo* memo = nullptr;
         if (!open)
         {
-            norm_path = fs::path(path).lexically_normal().string();
+            norm_path = path_utf8(utf8_path(path).lexically_normal());
             memo_digest = entry_digest.empty() ? shard_digest(norm_path, *closed_text) : entry_digest;
             memo = &native_memo_of(norm_path, memo_digest);
             // A changed target file drops all answers of the script.
@@ -5986,7 +5986,7 @@ Server::NativeMemo& Server::native_memo_of(const std::string& norm, const std::s
 // The fallback filter for a path that the workspace index does not have (HOT-34).
 bool Server::table_lacks_word(const std::string& path, const std::string& text, const std::string& word)
 {
-    const std::string norm = fs::path(path).lexically_normal().string();
+    const std::string norm = path_utf8(utf8_path(path).lexically_normal());
     const std::string digest = shard_digest(norm, text);
     TableEntry& entry = table_cache_[norm];
     if (!entry.table || entry.digest != digest)
@@ -6188,7 +6188,7 @@ std::shared_ptr<const FileRefs> Server::file_refs(const std::string& path, const
         ++table_analyses_;
         return open->table;
     }
-    const std::string norm = fs::path(path).lexically_normal().string();
+    const std::string norm = path_utf8(utf8_path(path).lexically_normal());
     std::optional<std::string> read;
     if (!given)
     {
@@ -6228,7 +6228,7 @@ void Server::drop_import_graph(const std::string& path)
     if (path.empty())
         graph_files_.clear();
     else
-        graph_files_.erase(fs::path(path).lexically_normal().string());
+        graph_files_.erase(path_utf8(utf8_path(path).lexically_normal()));
 }
 
 ImportGraph& Server::import_graph(const std::string& also, bool fresh)
@@ -6246,9 +6246,9 @@ ImportGraph& Server::import_graph(const std::string& also, bool fresh)
     std::vector<std::string> paths = graph_walk_;
     for (const auto& [uri, doc] : docs_)
         if (!doc->path.empty() && !doc->embedded)
-            paths.push_back(fs::path(doc->path).lexically_normal().string());
+            paths.push_back(path_utf8(utf8_path(doc->path).lexically_normal()));
     if (!also.empty())
-        paths.push_back(fs::path(also).lexically_normal().string());
+        paths.push_back(path_utf8(utf8_path(also).lexically_normal()));
     std::set<std::string> seen;
     for (const std::string& path : paths)
     {
@@ -6270,8 +6270,8 @@ ImportGraph& Server::import_graph(const std::string& also, bool fresh)
         else
         {
             std::error_code ec;
-            next.size = fs::file_size(path, ec);
-            next.mtime = fs::last_write_time(path, ec);
+            next.size = fs::file_size(utf8_path(path), ec);
+            next.mtime = fs::last_write_time(utf8_path(path), ec);
             if (it != graph_files_.end() && !it->second.open && it->second.size == next.size
                 && it->second.mtime == next.mtime)
                 continue;
@@ -8130,7 +8130,7 @@ json Server::on_document_link(const Doc& d)
     }
     hotc::TranslateOptions o = translate_options(d);
     o.fs = open_docs_fs_;
-    const std::string dir = fs::path(d.path).parent_path().string();
+    const std::string dir = path_utf8(utf8_path(d.path).parent_path());
     bool block = false;
     for (int l = 0; l < static_cast<int>(d.text.starts.size()); ++l)
     {

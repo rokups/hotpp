@@ -4,6 +4,7 @@
 
 #include "script_text.h"
 
+#include "long_path.h"
 #include "semantic.h"
 
 #include <algorithm>
@@ -222,7 +223,7 @@ void collect_words(const FileRefs& t, const std::string& text, std::set<std::str
 std::vector<std::string> script_imports_in(
     const hotc::TranslateOptions& options, const std::string& path, const std::string& text)
 {
-    const std::string dir = std::filesystem::path(path).parent_path().string();
+    const std::string dir = path_utf8(utf8_path(path).parent_path());
     std::vector<std::string> out;
     for (const std::string& pth : hotc::analyze_imports(text, std::string()).imports)
     {
