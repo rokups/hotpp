@@ -26,6 +26,7 @@ option(HOT_SAMPLES_STANDALONE_TEST "Configure, build and test samples/aot as a s
 # for Windows (HOT_LLVM_DIR, HOT_LLVM_RELEASES_DIR or HOT_DOWNLOAD_LLVM, cmake/HotDownloadLlvm.cmake). Then the
 # translator is on by default, and the emulator (wine) runs hotc.exe and the tests.
 include(cmake/HotLlvmVersion.cmake)
+include(cmake/HotUtf8.cmake)
 option(HOT_DOWNLOAD_LLVM "Download the LLVM release for Windows (libclang.dll, clang++.exe)" OFF)
 set(HOT_LLVM_DIR "" CACHE PATH "The folder of an unpacked LLVM release for Windows (no download)")
 # A folder with unpacked releases. When HOT_LLVM_DIR is empty, the release folder of

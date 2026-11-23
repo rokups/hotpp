@@ -2343,7 +2343,7 @@ void Server::on_workspace_folders(const json& p)
     // The clangd child keeps the database directory that it has: it is not started again.
     if (!index_.enabled() && opt_.index_dir.empty() && !roots_.empty())
     {
-        index_.open((fs::path(roots_[0]) / ".cache" / "hot" / "index").string());
+        index_.open(path_utf8(utf8_path(roots_[0]) / ".cache" / "hot" / "index"));
         index_.prune();
     }
     // The shards of the files that are in a removed folder, and in no other folder, go.
@@ -2423,7 +2423,7 @@ json Server::on_initialize(const json& p)
     if (!opt_.index_dir.empty())
         index_.open(opt_.index_dir);
     else if (!roots_.empty())
-        index_.open((fs::path(roots_[0]) / ".cache" / "hot" / "index").string());
+        index_.open(path_utf8(utf8_path(roots_[0]) / ".cache" / "hot" / "index"));
     index_.prune();
     load_hosts();
     start_clangd(p);
@@ -3110,14 +3110,14 @@ json Server::analyze_diagnostics(const Doc& d) const
 // The path of a script that the translator names, as an absolute path.
 static std::string script_file_path(const Doc& d, const std::string& name)
 {
-    fs::path f(name);
+    fs::path f = utf8_path(name);
     if (f.is_relative())
     {
-        const fs::path near = fs::path(d.path).parent_path() / f;
+        const fs::path near = utf8_path(d.path).parent_path() / f;
         std::error_code ec;
         f = fs::exists(near, ec) ? near : fs::absolute(f);
     }
-    return f.lexically_normal().string();
+    return path_utf8(f.lexically_normal());
 }
 
 // The translator errors in the imported scripts, by the URI of the script. The line and the
@@ -3472,7 +3472,7 @@ json Server::using_completion(const Doc& d, Pos cur, size_t off, size_t line_beg
                 static const std::set<std::string> kExt = {".hot", ".h", ".hpp", ".hxx", ".hh"};
                 if (!is_dir && !kExt.count(ext))
                     continue;
-                if (!is_dir && fs::path(it->path()).lexically_normal().string() == cur_file)
+                if (!is_dir && path_utf8(it->path().lexically_normal()) == cur_file)
                     continue;
                 const std::string label = dir_part + name + (is_dir ? "/" : "");
                 if (!seen.insert(label).second)
@@ -6116,7 +6116,7 @@ std::vector<std::string> Server::workspace_scripts(bool with_import_dirs) const
                 continue;
             }
             if (it->path().extension() == ".hot" && it->is_regular_file(ec2))
-                out.push_back(it->path().lexically_normal().string());
+                out.push_back(path_utf8(it->path().lexically_normal()));
         }
     }
     std::sort(out.begin(), out.end());
@@ -6148,9 +6148,9 @@ IndexShard Server::shard_of_doc(const Doc& d)
 
 std::shared_ptr<Doc> Server::open_doc_at(const std::string& path, bool with_embedded) const
 {
-    const fs::path want = fs::path(path).lexically_normal();
+    const fs::path want = utf8_path(path).lexically_normal();
     for (const auto& [uri, doc] : docs_)
-        if ((with_embedded || !doc->embedded) && (doc->path == path || fs::path(doc->path).lexically_normal() == want))
+        if ((with_embedded || !doc->embedded) && (doc->path == path || utf8_path(doc->path).lexically_normal() == want))
             return doc;
     // Another spelling of the file (a link, "/var" and "/private/var", "\\" and "/"): the real paths.
     const std::string key = real_key(path);

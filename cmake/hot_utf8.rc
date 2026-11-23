@@ -1,0 +1,2 @@
+// Resource script for toolchains that do not embed a .manifest source (MinGW).
+1 24 "hot_utf8.manifest"

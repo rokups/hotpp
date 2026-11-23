@@ -7,3 +7,4 @@
 add_executable(hotc hotc.cpp)
 add_executable(hot::hotc ALIAS hotc)
 target_link_libraries(hotc PRIVATE hot_clang_backend)
+hot_utf8_manifest(hotc)

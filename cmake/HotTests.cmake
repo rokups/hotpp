@@ -40,6 +40,7 @@ function(hot_gtest target)
     if(MSVC AND EXISTS "${HOT_CMAKE_DIR}/../tests/support/seh_report.cpp")
         target_sources(${target} PRIVATE "${HOT_CMAKE_DIR}/../tests/support/seh_report.cpp")
     endif()
+    hot_utf8_manifest(${target})
     gtest_discover_tests(${target}
         ${_hot_discovery}
         ${A_UNPARSED_ARGUMENTS}

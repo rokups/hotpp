@@ -12,4 +12,5 @@ target_include_directories(hot_ls_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} PRIVATE
 target_link_libraries(hot_ls_lib PUBLIC hot_clang_backend nlohmann_json::nlohmann_json Threads::Threads)
 add_executable(hot_ls main.cpp)
 target_link_libraries(hot_ls PRIVATE hot_ls_lib)
+hot_utf8_manifest(hot_ls)
 set_target_properties(hot_ls PROPERTIES OUTPUT_NAME hot-ls)

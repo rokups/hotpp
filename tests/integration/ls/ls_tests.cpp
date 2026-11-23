@@ -12595,3 +12595,42 @@ TEST(LanguageServer, UsingWordWorksWithAShortImportPath)
     const json items = using_items("using \"a.h\";\nusing ", setup);
     EXPECT_TRUE(std::any_of(items.begin(), items.end(), [](const json& i) { return i.value("label", "") == "Zed"; })) << items.dump();
 }
+
+// HOT-87: the root folder and the scripts have non-ASCII names (a user name like "Jos\xC3\xA9"). The
+// index shard goes to "<root>/.cache/hot/index", and the relative import resolves.
+TEST(LanguageServer, ANonAsciiRootAndScriptNameGetAShardAndResolveTheImport)
+{
+    namespace fs = std::filesystem;
+    TempDir aux; // the clangd log of the options
+    const fs::path root = fs::temp_directory_path() /
+        hot::ls::utf8_path("hot_Jos\xC3\xA9_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    fs::create_directories(root);
+    struct Cleanup
+    {
+        fs::path p;
+        ~Cleanup()
+        {
+            std::error_code ec;
+            fs::remove_all(p, ec);
+        }
+    } cleanup{root};
+    const std::string dep = hot::ls::path_utf8(root / hot::ls::utf8_path("\xC3\xB1" "and\xC3\xBA.hot"));
+    const std::string user = hot::ls::path_utf8(root / "user.hot");
+    const std::string dep_text = "int k() { return 1; }\n";
+    const std::string user_text = "using \"\xC3\xB1" "and\xC3\xBA.hot\";\nclass C\n{\n    int f() { return k(); }\n}\n"; // a class: a closed script with no class gets no shard
+    write_file(hot::ls::utf8_path(dep), dep_text);
+    write_file(hot::ls::utf8_path(user), user_text);
+    hot::ls::ServerOptions o = options(aux, false);
+    o.background_index = false;
+    LsClient client(o);
+    client.initialize(uri_of(hot::ls::path_utf8(root)));
+    client.open(uri_of(user), user_text);
+    const json r = client.request("hot/indexStats", {{"tables", {uri_of(user)}}, {"importersOf", uri_of(dep)}})["result"];
+    EXPECT_EQ(r["importers"], json::array({hotc::ref_file_id(hot::ls::long_path(user))})) << r.dump();
+    client.notify("textDocument/didClose", {{"textDocument", {{"uri", uri_of(user)}}}});
+    client.request("hot/indexStats", json::object()); // the close is done
+    int shards = 0;
+    for (const auto& e : fs::directory_iterator(root / ".cache" / "hot" / "index"))
+        shards += e.path().extension() == ".idx";
+    EXPECT_GT(shards, 0);
+}
