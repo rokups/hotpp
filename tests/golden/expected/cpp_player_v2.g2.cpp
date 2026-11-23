@@ -235,7 +235,7 @@ static const hot::FieldInfo Player_fields[] = {
     {"mode", nullptr, hot::type_key<Mode>(), offsetof(hot_state_Player, mode), sizeof(Mode),
      alignof(Mode), hot::field_flags<Mode>(), Player__init_mode, hot::move_field<Mode>, hot::field_destroyer<Mode>(), nullptr, nullptr, nullptr, hot::field_copy<Mode>()},
     {"level", nullptr, hot::type_key<float>(), offsetof(hot_state_Player, level), sizeof(float),
-     alignof(float), hot::field_flags<float>(), Player__init_level, hot::move_field<float>, hot::field_destroyer<float>(), typeid(int).name(), Player__convert_level_hook, nullptr, hot::field_copy<float>()},
+     alignof(float), hot::field_flags<float>(), Player__init_level, hot::move_field<float>, hot::field_destroyer<float>(), hot::type_key<int>(), Player__convert_level_hook, nullptr, hot::field_copy<float>()},
 };
 #if defined(__clang__)
 #pragma clang diagnostic pop

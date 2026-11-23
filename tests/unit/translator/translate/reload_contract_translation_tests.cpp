@@ -368,3 +368,17 @@ TEST(LayoutKey, SelfRecursiveStructWithTwoVectorsIsFast)
 }
 
 } // namespace
+
+// HOT-91: the convert hook key of a parameter is the field key of the same type.
+// Then the migration finds the hook for an enum and for a container of a struct.
+TEST(ConvertHookKey, EnumAndContainerParameterUseTheFieldKey)
+{
+    hotc::TranslateResult r = translate_text(
+        "using <vector>;\nenum Mode { Idle, Run }\nstruct Item {\n    int weight = 0;\n}\n"
+        "class Bag {\n    Mode mode;\n    std.vector<Item> items;\n"
+        "    Mode convert_mode(Mode old) { return old; }\n"
+        "    std.vector<Item> convert_items(std.vector<Item> old) { return old; }\n}\n");
+    ASSERT_TRUE(r.ok) << r.diagnostics;
+    EXPECT_TRUE(has(r.cpp, "typeid(hot::typekey_t<std::underlying_type_t<Mode>>).name(), Bag__convert_mode_hook")) << r.cpp;
+    EXPECT_TRUE(has(r.cpp, "), \"" + key_of(r.cpp) + "\"), Bag__convert_items_hook")) << r.cpp;
+}

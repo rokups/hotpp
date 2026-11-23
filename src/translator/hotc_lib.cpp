@@ -7808,9 +7808,7 @@ void translate_impl(
                     + f.name + ", hot::move_field<" + T + ">, hot::field_destroyer<" + T + ">()");
                 auto hk = hooks.find(f.name);
                 if (hk != hooks.end())
-                    o.w(", " + (sc.is_cpp ? "hot::type_key<" + hk->second->params[0].type + ">()"
-                                          : "typeid(" + hk->second->params[0].type + ").name()")
-                        + ", " + P + hk->second->name + "_hook");
+                    o.w(", " + field_key(hk->second->params[0].type) + ", " + P + hk->second->name + "_hook");
                 else
                     o.w(", nullptr, nullptr");
                 // The last two members: the layout of a box field, and the copy function.
@@ -10096,7 +10094,7 @@ void translate_impl(
                 + ", hot::move_field<" + T + ">, hot::field_destroyer<" + T + ">()";
             auto cv = converts.find(f.name);
             if (cv != converts.end())
-                row += ", typeid(" + cv->second->params[0].type + ").name(), " + P + cv->second->name + "_hook";
+                row += ", " + field_key(cv->second->params[0].type) + ", " + P + cv->second->name + "_hook";
             else
                 row += ", nullptr, nullptr";
             // The last two members: the layout of a box field, and the copy function.

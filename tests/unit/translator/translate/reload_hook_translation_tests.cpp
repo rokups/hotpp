@@ -69,7 +69,7 @@ TEST(ReloadHookTranslation, ConvertHookGoesToTheFieldRow)
         "    float convert_level(int old) { return old * 2.0; }");
     ASSERT_TRUE(r.ok) << r.diagnostics;
     EXPECT_NE(r.cpp.find("static float Foo__convert_level(int32_t old)"), std::string::npos) << r.cpp;
-    EXPECT_NE(r.cpp.find("typeid(int32_t).name(), Foo__convert_level_hook, nullptr, hot::field_copy<float>()},"), std::string::npos) << r.cpp;
+    EXPECT_NE(r.cpp.find("typeid(hot::typekey_t<int32_t>).name(), Foo__convert_level_hook, nullptr, hot::field_copy<float>()},"), std::string::npos) << r.cpp;
     // The convert function has no state: it never reads "st".
     const size_t at = r.cpp.find("static float Foo__convert_level(int32_t old)\n");
     ASSERT_NE(at, std::string::npos) << r.cpp;
