@@ -12080,10 +12080,22 @@ std::string with_line7(const std::string& line)
 std::vector<std::string> completion_labels(Session& s, int line, int col)
 {
     std::vector<std::string> out;
-    const json r = s.client->request("textDocument/completion", doc_pos(s.uri, line, col));
-    if (r.contains("result"))
-        for (const json& i : r["result"].is_array() ? r["result"] : r["result"].value("items", json::array()))
-            out.push_back(i.value("insertText", i.value("label", "")));
+    // Under load the first reply has only the script names and "isIncomplete" is true: ask again.
+    for (int tries = 0; tries < 40; ++tries)
+    {
+        out.clear();
+        const json r = s.client->request("textDocument/completion", doc_pos(s.uri, line, col));
+        bool incomplete = false;
+        if (r.contains("result"))
+        {
+            incomplete = r["result"].is_object() && r["result"].value("isIncomplete", false);
+            for (const json& i : r["result"].is_array() ? r["result"] : r["result"].value("items", json::array()))
+                out.push_back(i.value("insertText", i.value("label", "")));
+        }
+        if (!incomplete)
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     std::sort(out.begin(), out.end());
     return out;
 }
