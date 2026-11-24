@@ -927,20 +927,33 @@ private:
         e.prelude_suffix = suffix;
         if (preludes && !suffix.empty())
         {
+            // The walk result is shared by all callers. The key is the dirs and the suffix.
+            // on_watched_files clears the cache when a file is created, deleted or changed.
+            const std::vector<std::string>& dirs = host ? host->script_dirs : roots_;
             std::vector<std::string> found;
-            for (const std::string& dir : host ? host->script_dirs : roots_)
             {
-                std::error_code ec;
-                fs::recursive_directory_iterator it(utf8_path(dir), fs::directory_options::skip_permission_denied, ec);
-                for (; !ec && it != fs::recursive_directory_iterator(); it.increment(ec))
+                std::lock_guard<std::mutex> lock(prelude_walk_mutex_);
+                auto it = prelude_walks_.find({suffix, dirs});
+                if (it == prelude_walks_.end())
                 {
-                    const std::string name = path_utf8(it->path().filename());
-                    if (name.size() > suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0
-                        && it->is_regular_file(ec))
-                        found.push_back(path_utf8(it->path().lexically_normal()));
+                    ++prelude_walk_runs_;
+                    for (const std::string& dir : dirs)
+                    {
+                        std::error_code ec;
+                        fs::recursive_directory_iterator rit(utf8_path(dir), fs::directory_options::skip_permission_denied, ec);
+                        for (; !ec && rit != fs::recursive_directory_iterator(); rit.increment(ec))
+                        {
+                            const std::string name = path_utf8(rit->path().filename());
+                            if (name.size() > suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0
+                                && rit->is_regular_file(ec))
+                                found.push_back(path_utf8(rit->path().lexically_normal()));
+                        }
+                    }
+                    std::sort(found.begin(), found.end());
+                    it = prelude_walks_.emplace(std::make_pair(suffix, dirs), std::move(found)).first;
                 }
+                found = it->second;
             }
-            std::sort(found.begin(), found.end());
             for (const std::string& f : found)
                 if (std::find(e.preludes.begin(), e.preludes.end(), f) == e.preludes.end())
                     e.preludes.push_back(f);
@@ -1022,6 +1035,10 @@ private:
     std::string lite_uri(const Doc& d, const std::string& full, int gen_line0, int wait_ms = kNativeBudgetMs);
     std::string shell_dir_;
     const std::string& shell_dir();
+    // The user prelude files found by the walk of effective_options, for each (suffix, dirs).
+    mutable std::mutex prelude_walk_mutex_;
+    mutable std::map<std::pair<std::string, std::vector<std::string>>, std::vector<std::string>> prelude_walks_;
+    mutable std::atomic<int> prelude_walk_runs_{0}; // the walks (hot/indexStats "preludeWalks")
     // After an in-place change of the shell header (HOT-52): true when the new preamble is shown. After the hold,
     // one documentSymbol request waits for the AST, which needs the new preamble. A time-out keeps the doc
     // unconfirmed, so the next request asks again. A confirmed or stable-free document costs nothing.
@@ -2233,6 +2250,11 @@ void Server::refresh_hosts(Doc* current, bool force)
 void Server::on_watched_files(const json& p)
 {
     bool host_file = false;
+    {
+        // A created or deleted file can change the user preludes.
+        std::lock_guard<std::mutex> lock(prelude_walk_mutex_);
+        prelude_walks_.clear();
+    }
     // The prelude suffixes of the options and of all the hosts. A file that has none of them is
     // not a prelude, so it needs no walk of the scripts.
     std::set<std::string> suffixes, changed_suffixes;
@@ -9140,6 +9162,7 @@ void Server::handle(const json& msg)
         json out;
         out["slowRunning"] = slow_running_.load();
         out["updateRuns"] = update_runs_.load();
+        out["preludeWalks"] = prelude_walk_runs_.load();
         {
             std::lock_guard<std::mutex> lock(docs_mutex_);
             int dirty = 0;

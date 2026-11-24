@@ -5750,6 +5750,39 @@ TEST(LanguageServer, PreludeSuffixFindsUserPreludes)
     EXPECT_FALSE(has_source(n["params"]["diagnostics"], "hot")) << n.dump();
 }
 
+// The walk for the user preludes runs once and the callers share it. A watched file change makes a new walk.
+TEST(LanguageServer, PreludeWalkIsCached)
+{
+    TempDir dir;
+    const std::string text = "class Marker { int n = 0; }\n";
+    const std::string a = (dir.path() / "a.hot").string();
+    const std::string b = (dir.path() / "b.hot").string();
+    write_file(a, text);
+    write_file(b, text);
+    hot::ls::ServerOptions o = options(dir, false);
+    o.prelude_suffix = ".prelude.hot";
+    LsClient client(o);
+    client.initialize(uri_of(dir.path().string()));
+    auto walks = [&] { return client.request("hot/indexStats", json::object())["result"].value("preludeWalks", -1); };
+    client.open(uri_of(a), text);
+    ASSERT_FALSE(client.wait_notification("textDocument/publishDiagnostics",
+        [&](const json& p) { return p.value("uri", std::string()) == uri_of(a); }).is_null());
+    const int first = walks();
+    EXPECT_GE(first, 1);
+    client.open(uri_of(b), text);
+    ASSERT_FALSE(client.wait_notification("textDocument/publishDiagnostics",
+        [&](const json& p) { return p.value("uri", std::string()) == uri_of(b); }).is_null());
+    EXPECT_EQ(walks(), first);
+    const std::string prelude = (dir.path() / "new.prelude.hot").string();
+    write_file(prelude, "[attribute] class Tagged;\n");
+    client.notify("workspace/didChangeWatchedFiles",
+        {{"changes", json::array({{{"uri", uri_of(prelude)}, {"type", 1}}})}});
+    client.change(uri_of(a), 2, text + "\n");
+    ASSERT_FALSE(client.wait_notification("textDocument/publishDiagnostics",
+        [&](const json& p) { return p.value("uri", std::string()) == uri_of(a); }).is_null());
+    EXPECT_GT(walks(), first);
+}
+
 // An open prelude file is a script. It does not get its own text as a prelude, so its stubs
 // are not duplicates. The new stub attributes are known.
 TEST(LanguageServer, OpenPreludeFileHasNoErrors)
