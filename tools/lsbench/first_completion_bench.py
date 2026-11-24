@@ -10,7 +10,7 @@ Line and char are 0-based (LSP). Modes:
 The bench asks twice. It prints the latency and the HOT_LS_TIMING lines of each request.
 Exit code 1: the first latency is above --limit-ms.
 """
-import argparse, importlib.util, os, sys, tempfile, time
+import argparse, atexit, importlib.util, os, sys, tempfile, time
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location("lsbench", Path(__file__).with_name("lsbench.py"))
@@ -39,6 +39,7 @@ def main():
         ap.error("--mode typed needs the --index-dir of an earlier run")
     idx = a.index_dir or tempfile.mkdtemp(prefix="h57_idx_")
     tf = tempfile.NamedTemporaryFile(prefix="h57_timing_", delete=False).name
+    atexit.register(os.unlink, tf)  # runs also after an error or sys.exit
     os.environ["HOT_LS_TIMING"] = tf
     t0 = time.time()
     c = lsbench.Client(a.hot_ls, a.workspace, idx,
