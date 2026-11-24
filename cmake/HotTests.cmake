@@ -10,11 +10,15 @@
 # The test hot_scratch_clean is the setup of this fixture. It removes the old scratch files
 # before the tests start. Use PROPERTIES to give more test properties. Callers must not set
 # FIXTURES_REQUIRED in PROPERTIES. The wrapper sets it, and a second value would replace it.
+# The wrapper sets the environment variable TMPDIR to HOT_TEST_TMPDIR, so the temporary files of
+# the tests (hotc_session_test_*, libclang preamble-*.pch) go under the scratch root. A caller
+# that sets ENVIRONMENT in PROPERTIES must add TMPDIR=${HOT_TEST_TMPDIR} to it.
 include(GoogleTest)
 include(${CMAKE_CURRENT_LIST_DIR}/HotModuleLink.cmake)
 
 # The dir of this file. CMAKE_CURRENT_LIST_DIR is not valid inside add_test arguments.
 set(HOT_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR})
+set(HOT_TEST_TMPDIR ${HOT_SCRATCH_DIR}/tests/tmp)
 
 function(hot_gtest target)
     cmake_parse_arguments(PARSE_ARGV 1 A "" "DISCOVERY_TIMEOUT" "PROPERTIES")
@@ -44,7 +48,7 @@ function(hot_gtest target)
     gtest_discover_tests(${target}
         ${_hot_discovery}
         ${A_UNPARSED_ARGUMENTS}
-        PROPERTIES FIXTURES_REQUIRED hot_scratch ${A_PROPERTIES})
+        PROPERTIES FIXTURES_REQUIRED hot_scratch ENVIRONMENT TMPDIR=${HOT_TEST_TMPDIR} ${A_PROPERTIES})
 endfunction()
 
 add_test(NAME hot_scratch_clean

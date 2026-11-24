@@ -5,6 +5,10 @@
 # Remove the scratch files of the tests, the backends and the benchmarks.
 # Run it as a script: cmake -DKEEP=<bool> -DDIR=<scratch dir> -P CleanScratch.cmake
 # The directory imgui stays: it is the work directory of the sample `samples/imgui`.
+# The tests use ${DIR}/tests/tmp as TMPDIR. It must exist, also when KEEP is on.
+if(NOT "${DIR}" STREQUAL "")
+    file(MAKE_DIRECTORY ${DIR}/tests/tmp)
+endif()
 set(_keep "${KEEP}")
 if(DEFINED ENV{HOT_KEEP_TEMP})
     if(NOT "$ENV{HOT_KEEP_TEMP}" STREQUAL "" AND NOT "$ENV{HOT_KEEP_TEMP}" STREQUAL "0")
@@ -21,3 +25,4 @@ if("${DIR}" STREQUAL "")
     message(FATAL_ERROR "CleanScratch.cmake needs -DDIR=<scratch dir>")
 endif()
 file(REMOVE_RECURSE ${DIR}/tests ${DIR}/hot_work ${DIR}/bench)
+file(MAKE_DIRECTORY ${DIR}/tests/tmp)

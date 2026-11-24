@@ -70,4 +70,4 @@ if(HOT_LIBCLANG_DLL)
     target_compile_definitions(integration_backend_tests PRIVATE HOT_LLVM_TOOLS_DIR="${_hot_llvm_tools_dir}")
 endif()
 # A view hit of the translate cache translates again and compares (HOT_TRANSLATE_VERIFY).
-hot_gtest(integration_backend_tests PROPERTIES ENVIRONMENT "HOT_TRANSLATE_VERIFY=1")
+hot_gtest(integration_backend_tests PROPERTIES ENVIRONMENT "TMPDIR=${HOT_TEST_TMPDIR};HOT_TRANSLATE_VERIFY=1")
