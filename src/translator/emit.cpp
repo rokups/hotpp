@@ -879,11 +879,6 @@ void emit_stmt(const Stmt& s, Emitter& out)
     std::visit(StmtPrinter{out}, s.v);
 }
 
-void emit_block(const BlockStmt& b, Emitter& out, int depth)
-{
-    out.depth = depth;
-    block(b, out);
-}
 
 void emit_stmts(const std::vector<StmtP>& v, Emitter& out, int depth)
 {

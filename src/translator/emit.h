@@ -91,9 +91,6 @@ private:
 
 void emit_expr(const Expr& e, Emitter& out);
 void emit_stmt(const Stmt& s, Emitter& out);
-// Sets out.depth to "depth", then writes the block with its braces. The braces are
-// at the indentation of "depth" and the statements are at "depth + 1".
-void emit_block(const BlockStmt& b, Emitter& out, int depth);
 // Sets out.depth to "depth", then writes the statements without braces (a function body).
 void emit_stmts(const std::vector<StmtP>& v, Emitter& out, int depth);
 

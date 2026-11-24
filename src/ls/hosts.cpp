@@ -82,8 +82,6 @@ std::string path_key(const fs::path& p)
     std::string out = long_path(path_utf8(p.lexically_normal()));
 #ifdef _WIN32
     std::replace(out.begin(), out.end(), '\\', '/');
-#endif
-#ifdef _WIN32
     if (out.size() > 1 && out[1] == ':')
         out[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[0])));
 #endif

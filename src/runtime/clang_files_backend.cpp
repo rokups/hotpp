@@ -560,17 +560,6 @@ std::set<std::string> pch_lines(const std::string& text)
     return r;
 }
 
-// Writes a file in a way that a reader never sees half of it.
-void write_text_atomic(const fs::path& path, const std::string& text)
-{
-    const fs::path tmp = path.string() + ".tmp" + std::to_string(hot::detail::process_id());
-    std::error_code ec;
-    if (write_text(tmp.string(), text))
-        fs::rename(tmp, path, ec);
-    if (ec || !fs::exists(path, ec))
-        fs::remove(tmp, ec);
-}
-
 } // namespace
 
 void ClangFilesBackend::seed_slots(const std::string& text)
@@ -2490,7 +2479,7 @@ void append_shared_extra(const fs::path& dir, const std::string& lines)
         return;
     std::error_code ec;
     fs::create_directories(dir, ec);
-    write_text_atomic(path, extra + add);
+    write_text_replace(path.string(), extra + add);
 }
 
 // The lines of a text without the new line, in order, without duplicates.
@@ -2579,7 +2568,7 @@ void ClangFilesBackend::write_pch_shadow()
     const fs::path file = fs::path(opt_.cache_dir) / "pch" / "shared.shadow";
     std::error_code dir_ec;
     fs::create_directories(file.parent_path(), dir_ec);
-    write_text_atomic(file, text);
+    write_text_replace(file.string(), text);
 }
 
 void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bool timing)
@@ -2654,7 +2643,7 @@ void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bo
         if (!old_text.empty())
             old_plan = make_pch_plan(old_text, std::string(), 0, true);
         fs::create_directories(dir, ec);
-        write_text_atomic(dir / "shared.salt", new_shared_pch_salt());
+        write_text_replace((dir / "shared.salt").string(), new_shared_pch_salt());
         if (old_plan)
             pch_cache_->remove(old_plan->key);
         fs::remove(dir / "shared.inc", ec);
@@ -2692,7 +2681,7 @@ void ClangFilesBackend::prewarm_pch(const std::vector<const BuildJob*>& jobs, bo
         {
             std::error_code ec;
             fs::create_directories(dir, ec);
-            write_text_atomic(dir / "shared.inc", text);
+            write_text_replace((dir / "shared.inc").string(), text);
         }
         return;
     }
@@ -3734,7 +3723,7 @@ void ClangFilesBackend::start_pch_build(
                 else if (ok)
                 {
                     // The new union is now the saved union.
-                    write_text_atomic(dir / "shared.inc", plan.prefix);
+                    write_text_replace((dir / "shared.inc").string(), plan.prefix);
                 }
                 else if (pch_is_bad(plan))
                 {

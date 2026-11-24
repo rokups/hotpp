@@ -590,7 +590,6 @@ bool WorkspaceIndex::take(std::string& path, Job& job, uint64_t& generation)
                     ++it; // one job for a path at a time
                     continue;
                 }
-                path = *it;
                 const auto slot = slots_.find(*it);
                 if (slot == slots_.end())
                 {

@@ -7371,9 +7371,7 @@ void translate_impl(
         std::string text;
         for (const std::string& v : vals)
             text += value_layout(v, 0);
-        uint64_t h = 14695981039346656037ull;
-        for (unsigned char c : text)
-            h = (h ^ c) * 1099511628211ull;
+        const uint64_t h = hash_text(text);
         char hex[17];
         std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(h));
         return "hot::layout_keyed(" + plain + ", \"" + hex + "\")";
@@ -11649,9 +11647,7 @@ void translate_impl(
             for (const ClassDef& c : sc.classes)
                 if (types.is_script_value(c.name))
                     text += value_layout(c.name, 0);
-            uint64_t h = 14695981039346656037ull;
-            for (unsigned char ch : text)
-                h = (h ^ ch) * 1099511628211ull;
+            const uint64_t h = hash_text(text);
             char hex[17];
             std::snprintf(hex, sizeof hex, "%016llx", static_cast<unsigned long long>(h));
             o.insert(lambda_tag_at,
@@ -12675,10 +12671,7 @@ AnalyzeResult analyze_cpp(
     res.diagnostics = tr.diagnostics;
 
     // The line table of the text: the byte offset of the start of each line.
-    std::vector<uint32_t> starts{0};
-    for (size_t i = 0; i < text.size(); ++i)
-        if (text[i] == '\n')
-            starts.push_back(static_cast<uint32_t>(i + 1));
+    const std::vector<uint32_t> starts = line_starts(text);
 
     // Each line is "path:line:col: error: text", "path:line: error: text" or "hotc: error: text".
     const std::string head = path + ":";

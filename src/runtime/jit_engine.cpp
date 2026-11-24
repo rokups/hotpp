@@ -746,17 +746,6 @@ hot_jit_engine* hot_jit_engine_create(int debugger_support, const void* const* h
         else if (out_debugger_on)
             *out_debugger_on = 1;
     }
-#ifndef _MSC_VER
-    // The executable links with -rdynamic: the engine, the runtime and libstdc++ resolve here.
-    auto gen = llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
-        engine->jit->getDataLayout().getGlobalPrefix());
-    if (!gen)
-    {
-        put(out_error, "cannot search the process symbols: " + error_text(gen.takeError()) + "\n");
-        return nullptr;
-    }
-    engine->jit->getMainJITDylib().addGenerator(std::move(*gen));
-#endif
     return engine.release();
 }
 
