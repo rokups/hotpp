@@ -12374,7 +12374,8 @@ AnalyzeResult analyze(const std::string& text, const TranslateOptions& options, 
     // new region is left. The result keeps "ok" and the diagnostics of the first translation.
     {
         std::set<std::pair<size_t, size_t>> blanked;
-        const std::string script_name = options.script_name.empty() ? std::string("script.hot") : options.script_name;
+        // An empty name stays empty: the diagnostics then start with ":line:col", as in the translation.
+        const std::string& script_name = options.script_name;
         bool lenient_tried = false;
         for (int pass = 0; pass < 4 && !tr.ok; ++pass)
         {

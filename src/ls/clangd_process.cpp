@@ -180,9 +180,11 @@ bool ClangdProcess::start(
 
 bool ClangdProcess::send(const json& msg)
 {
-    if (to_ < 0 || closed_)
+    if (closed_)
         return false;
     std::lock_guard<std::mutex> lock(write_mutex_);
+    if (to_ < 0)
+        return false;
     return write_message(to_, msg.dump(-1, ' ', false, json::error_handler_t::replace));
 }
 

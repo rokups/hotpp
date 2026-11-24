@@ -165,6 +165,26 @@ TEST(Analyze, BadOverrideInOneMethodKeepsTheMapOfTheOtherMethod)
     EXPECT_EQ(r.cpp.find("n = 1"), std::string::npos); // the bad method is left out
 }
 
+// A script without a name: the diagnostics start with ":line:col". The bad method is still left out.
+TEST(Analyze, BadOverrideWithoutScriptNameKeepsTheMapOfTheOtherMethod)
+{
+    TempDir dir;
+    write_file(dir.path() / "w.h", "class Widget { public: virtual ~Widget() {} virtual void Update(float dt) {} };\n");
+    hotc::TranslateOptions o = temp_options(dir, "");
+    o.script_name.clear();
+    const hotc::AnalyzeResult r = hotc::analyze(
+        "using \"w.h\";\n"
+        "class Foo : Widget {\n"
+        "    int n = 0;\n"
+        "    override void Missing(float dt) { n = 1; }\n"
+        "    void b() { n = n + 2; }\n"
+        "}\n",
+        o);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.cpp.find("n + 2"), std::string::npos) << r.diagnostics;
+    EXPECT_EQ(r.cpp.find("n = 1"), std::string::npos);
+}
+
 // Two bad overrides in one class: both members go in one pass or in two passes. The method
 // between them stays. The first diagnostics stay in the result.
 TEST(Analyze, TwoBadOverridesKeepTheMethodBetweenThem)
