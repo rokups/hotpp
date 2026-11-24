@@ -11,8 +11,8 @@
 # before the tests start. Use PROPERTIES to give more test properties. Callers must not set
 # FIXTURES_REQUIRED in PROPERTIES. The wrapper sets it, and a second value would replace it.
 # The wrapper sets the environment variable TMPDIR to HOT_TEST_TMPDIR, so the temporary files of
-# the tests (hotc_session_test_*, libclang preamble-*.pch) go under the scratch root. It uses
-# ENVIRONMENT_MODIFICATION, so a caller can still set ENVIRONMENT in PROPERTIES.
+# the tests (hotc_session_test_*, libclang preamble-*.pch) go under the scratch root. A caller
+# that sets ENVIRONMENT in PROPERTIES must add TMPDIR=${HOT_TEST_TMPDIR} to it.
 include(GoogleTest)
 include(${CMAKE_CURRENT_LIST_DIR}/HotModuleLink.cmake)
 
@@ -48,7 +48,7 @@ function(hot_gtest target)
     gtest_discover_tests(${target}
         ${_hot_discovery}
         ${A_UNPARSED_ARGUMENTS}
-        PROPERTIES FIXTURES_REQUIRED hot_scratch ENVIRONMENT_MODIFICATION TMPDIR=set:${HOT_TEST_TMPDIR} ${A_PROPERTIES})
+        PROPERTIES FIXTURES_REQUIRED hot_scratch ENVIRONMENT TMPDIR=${HOT_TEST_TMPDIR} ${A_PROPERTIES})
 endfunction()
 
 add_test(NAME hot_scratch_clean
