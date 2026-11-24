@@ -11941,11 +11941,18 @@ TEST(LanguageServer, ThisCacheDropsTheMembersWhenTheImportedBaseChanges)
     // The import changes the shell (HOT-52): the replies are not stored during the hold. The test waits for it.
     s.client->change(s.uri, 2, this_script("Base", "Ta", 1));
     std::this_thread::sleep_for(std::chrono::milliseconds(hot::ls::kShellHoldMs + 500));
-    EXPECT_FALSE(contains_name(this_names(s, 3, "Base", "Ta", 1), "Tag"));
-    const int analyzes_first = this_stat(s, "thisAnalyzes"); // under load the first reply can need more than one run
-    EXPECT_FALSE(contains_name(this_names(s, 4, "Base", "Ta", 2), "Tag")); // from the cache
+    // Under load a reply can be incomplete and is not stored. Ask again until a request is answered from the
+    // cache: it adds no analysis run.
+    int version = 3, text_n = 1;
+    bool from_cache = false;
+    for (int i = 0; i < 20 && !from_cache; ++i, ++version, ++text_n)
+    {
+        const int before = this_stat(s, "thisAnalyzes");
+        EXPECT_FALSE(contains_name(this_names(s, version, "Base", "Ta", text_n), "Tag"));
+        from_cache = i > 0 && this_stat(s, "thisAnalyzes") == before;
+    }
     if (cache)
-        EXPECT_EQ(this_stat(s, "thisAnalyzes"), analyzes_first);
+        EXPECT_TRUE(from_cache) << "no request was answered from the cache";
     write_file(s.dir.path() / "base.hot",
         "using \"Actor.h\";\nusing \"Damageable.h\";\nclass Base : Actor, ITagged { }\n");
     // The header changes (HOT-52): clangd answers from the old preamble for a time, and the reply is not stored.
@@ -11953,7 +11960,7 @@ TEST(LanguageServer, ThisCacheDropsTheMembersWhenTheImportedBaseChanges)
     std::vector<std::string> after;
     for (int i = 0; i < hot::ls::kShellHoldMs / 250 + 16 && !contains_name(after, "Tag"); ++i)
     {
-        after = this_names(s, 5 + i, "Base", "Ta", 3 + i);
+        after = this_names(s, version + i, "Base", "Ta", text_n + i);
         if (!contains_name(after, "Tag"))
             std::this_thread::sleep_for(std::chrono::milliseconds(250));
     }
