@@ -95,6 +95,11 @@ jobs:
       - name: Test
         run: ctest --preset linux-clang-files-rel -j "$(nproc)"
 
+      # HOT-89: the preset has two configurations. The samples add hot_script_host side files, and
+      # the generate step must accept the configurations with different flags. Configure only.
+      - name: Configure the samples in a multi-config build
+        run: cmake --preset linux-clang-files -B cmake-build/samples-check -DHOT_BUILD_SAMPLES=ON -DHOT_BUILD_TESTS=OFF
+
       - name: Build the SDK (portable)
         run: |
           cmake --preset linux-clang-files -B cmake-build/sdk -DCMAKE_CONFIGURATION_TYPES=Release \
