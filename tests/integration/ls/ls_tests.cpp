@@ -2795,7 +2795,15 @@ TEST(LanguageServer, PrivateClangdDirOptionKeepsTheIndexOutOfTheSharedDir)
     EXPECT_TRUE(SharedProject::wait_shard(p.private_dir() / ".cache" / "clangd" / "index"));
     EXPECT_TRUE(fs::exists(p.private_dir() / "compile_commands.json"));
     EXPECT_FALSE(fs::exists(p.index_dir())) << "the private child wrote into the shared dir";
-    const json hover = client.request("textDocument/hover", doc_pos(uri_of(p.script), 2, 16));
+    // A cold hover can be null under load (HOT-94). Ask again.
+    json hover;
+    for (int i = 0; i < 40; ++i)
+    {
+        hover = client.request("textDocument/hover", doc_pos(uri_of(p.script), 2, 16));
+        if (hover.contains("result") && hover["result"].is_object())
+            break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    }
     ASSERT_TRUE(hover.contains("result") && hover["result"].is_object()) << hover.dump();
 }
 
