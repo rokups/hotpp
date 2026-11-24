@@ -16,6 +16,8 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <thread>
+#include <vector>
 
 namespace
 {
@@ -264,6 +266,32 @@ TEST_F(ObjectCacheStore, StoreThenLookupHits)
     EXPECT_EQ(read_text(hit->object), "OBJECT-BYTES");
     EXPECT_TRUE(fs::exists(entry(".d")));
     EXPECT_NE(read_text(entry(".d")).find("header.h"), std::string::npos);
+}
+
+// Many stores of one key at the same time (many backends build the same PCH): the last manifest
+// must match the last object file, so the lookup hits.
+TEST_F(ObjectCacheStore, ConcurrentStoresOfOneKeyStillHit)
+{
+    const int n = 8;
+    for (int round = 0; round < 50; ++round)
+    {
+        std::vector<std::thread> threads;
+        std::vector<char> ok(n, 0);
+        for (int i = 0; i < n; ++i)
+        {
+            const fs::path tmp = root.path / ("unit.o.tmp" + std::to_string(i));
+            write_text(tmp, std::string("OBJECT-BYTES-") + std::string(static_cast<size_t>(i + round % 7), 'x'));
+            threads.emplace_back([&, i, tmp] {
+                std::string error;
+                ok[i] = cache.store(key, tmp, depfile(), work_dir, started, error) ? 1 : 0;
+            });
+        }
+        for (std::thread& t : threads)
+            t.join();
+        for (int i = 0; i < n; ++i)
+            EXPECT_TRUE(ok[i]) << "round " << round << " store " << i;
+        ASSERT_TRUE(cache.lookup(key).has_value()) << "round " << round;
+    }
 }
 
 TEST_F(ObjectCacheStore, LookupOfUnknownKeyMisses)

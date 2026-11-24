@@ -15,6 +15,7 @@
 #include <exception>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <sstream>
 
 namespace hot
@@ -743,6 +744,12 @@ bool ObjectCache::store(const Key& key, const fs::path& obj_tmp, const std::stri
             error = "cannot create " + obj_dir().string() + ": " + ec.message();
             return false;
         }
+
+        // Two stores of the same key in one process must not interleave: the manifest of the first
+        // would hold the stamp of an object file that the second replaced, and the lookup would miss.
+        // shortcut: this does not cover two processes, and the lookup then misses once more.
+        static std::mutex store_mutex;
+        std::lock_guard<std::mutex> store_lock(store_mutex);
 
         // The old manifest goes first, so a reader never pairs it with a new object file.
         fs::remove(entry_file(key, ".json"), ec);
